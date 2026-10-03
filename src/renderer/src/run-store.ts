@@ -5,6 +5,7 @@ import { useWorkflowStore } from "./workflow-store";
 type RunState = {
   statusByNode: Record<string, NodeRunStatus>;
   log: string;
+  workspacePath: string | null;
   activeNodeId: string | null;
   start: (nodeId: string) => Promise<void>;
   cancel: () => Promise<void>;
@@ -13,12 +14,14 @@ type RunState = {
 export const useRunStore = create<RunState>((set, get) => ({
   statusByNode: {},
   log: "",
+  workspacePath: null,
   activeNodeId: null,
   async start(nodeId) {
     if (get().activeNodeId) {
       return;
     }
-    const node = useWorkflowStore.getState().workflow.nodes.find((item) => item.id === nodeId);
+    const workflow = useWorkflowStore.getState().workflow;
+    const node = workflow.nodes.find((item) => item.id === nodeId);
     if (!node || node.type !== "agent") {
       return;
     }
@@ -26,6 +29,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     set({
       activeNodeId: nodeId,
       log: "",
+      workspacePath: null,
       statusByNode: { ...get().statusByNode, [nodeId]: "running" },
     });
 
@@ -41,6 +45,9 @@ export const useRunStore = create<RunState>((set, get) => ({
         ...(node.data.systemPrompt !== undefined ? { systemPrompt: node.data.systemPrompt } : {}),
         ...(node.data.tools !== undefined ? { tools: node.data.tools } : {}),
         ...(node.data.disallowedTools !== undefined ? { disallowedTools: node.data.disallowedTools } : {}),
+        ...(node.data.workspaceMode ? { workspaceMode: node.data.workspaceMode } : {}),
+        ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
+        ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
       });
       applyUpdate(set, get, done);
     } catch (error) {
@@ -79,6 +86,7 @@ function applyUpdate(
   set({
     log: update.log,
     statusByNode: { ...get().statusByNode, [update.nodeId]: update.status },
+    ...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
   });
 }
 

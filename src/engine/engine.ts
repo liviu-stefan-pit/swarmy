@@ -1,3 +1,4 @@
+import { randomUUID } from "node:crypto";
 import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -6,15 +7,25 @@ import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
+import { createWorkspaceManager, type AgentWorkspace, type WorkspaceManager } from "./workspace-manager";
 
 export interface EnginePort {
   postMessage(message: EngineMessage): void;
   onMessage(listener: (message: unknown) => void): void;
 }
 
-export function attachEngine(port: EnginePort, runtime?: AgentRuntime): void {
+export function attachEngine(
+  port: EnginePort,
+  runtime?: AgentRuntime,
+  options?: { workspaces?: WorkspaceManager },
+): void {
   let runtimePromise: Promise<AgentRuntime> | undefined;
   let workflows: WorkflowDb | undefined;
+  let workspaces = options?.workspaces;
+  const getWorkspaces = (): WorkspaceManager => {
+    workspaces ??= createWorkspaceManager();
+    return workspaces;
+  };
   const getRuntime = (): Promise<AgentRuntime> => {
     if (runtime) {
       return Promise.resolve(runtime);
@@ -58,7 +69,7 @@ export function attachEngine(port: EnginePort, runtime?: AgentRuntime): void {
     }
 
     if (message.type === "run.start") {
-      void answerRun(port, getRuntime(), message, activeRuns, starting, pendingCancels);
+      void answerRun(port, getRuntime(), getWorkspaces, message, activeRuns, starting, pendingCancels);
       return;
     }
 
@@ -123,6 +134,7 @@ async function answerHello(
 async function answerRun(
   port: EnginePort,
   runtimePromise: Promise<AgentRuntime>,
+  getWorkspaces: () => WorkspaceManager,
   message: Extract<EngineMessage, { type: "run.start" }>,
   activeRuns: Map<string, AgentRunSession>,
   starting: Set<string>,
@@ -140,14 +152,22 @@ async function answerRun(
   }
 
   starting.add(message.nodeId);
+  let workspace: AgentWorkspace | undefined;
   try {
     const runtime = await runtimePromise;
-    const cwd = await mkdtemp(join(tmpdir(), "swarmy-run-"));
+    const mode = message.workspaceMode ?? "managed";
+    workspace = await getWorkspaces().provision({
+      id: runWorkspaceId(message.nodeId),
+      mode,
+      ...(message.repositoryPath ? { repositoryPath: message.repositoryPath } : {}),
+      ...(message.folderPath ? { folderPath: message.folderPath } : {}),
+    });
+    const workspacePath = workspace.path;
     const session = startAgentRun({
       runtime,
       request: {
         apiKey: message.apiKey,
-        cwd,
+        cwd: workspacePath,
         prompt: message.prompt,
         ...(message.modelId ? { modelId: message.modelId } : {}),
         ...(message.systemPrompt !== undefined ? { systemPrompt: message.systemPrompt } : {}),
@@ -160,6 +180,7 @@ async function answerRun(
           nodeId: message.nodeId,
           status: update.status,
           log: scrub(update.log, message.apiKey),
+          workspacePath,
         });
       },
     });
@@ -169,14 +190,20 @@ async function answerRun(
       await session.cancel();
     }
     const outcome = await session.done;
+    await getWorkspaces().teardown(workspace);
+    workspace = undefined;
     port.postMessage({
       type: "run.done",
       id: message.id,
       nodeId: message.nodeId,
       status: outcome.status,
       log: scrub(outcome.log, message.apiKey),
+      workspacePath,
     });
   } catch (error) {
+    if (workspace) {
+      await getWorkspaces().teardown(workspace).catch(() => undefined);
+    }
     const text = scrub(error instanceof Error && error.message ? error.message : "The run failed", message.apiKey);
     port.postMessage({
       type: "run.done",
@@ -190,6 +217,11 @@ async function answerRun(
     activeRuns.delete(message.nodeId);
     pendingCancels.delete(message.nodeId);
   }
+}
+
+function runWorkspaceId(nodeId: string): string {
+  const safe = nodeId.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
+  return `${safe}-${randomUUID()}`;
 }
 
 async function answerCancel(

@@ -11,6 +11,7 @@ export async function launchSwarmy(): Promise<{ app: ElectronApplication; close:
       ...process.env,
       SWARMY_RUNTIME: "fake",
       SWARMY_DATA_DIR: dataDir,
+      SWARMY_WORKSPACES_DIR: join(dataDir, "workspaces"),
     },
   });
 

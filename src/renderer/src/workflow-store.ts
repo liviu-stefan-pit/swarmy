@@ -32,6 +32,7 @@ type WorkflowState = {
   setViewport: (viewport: Viewport) => void;
   replaceWorkflow: (workflow: Workflow) => void;
   renameWorkflow: (name: string) => void;
+  setRepositoryPath: (path: string) => void;
 };
 
 function nextId(prefix: string, ids: readonly string[]): string {
@@ -149,6 +150,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     }
     set({ workflow: parsed.data });
   },
+  setRepositoryPath: (path) => {
+    const workflow = get().workflow;
+    const repositoryPath = path.trim();
+    const next = { ...workflow };
+    if (repositoryPath.length > 0) {
+      next.repositoryPath = repositoryPath;
+    } else {
+      delete next.repositoryPath;
+    }
+    const parsed = workflowSchema.safeParse(next);
+    if (!parsed.success) {
+      return;
+    }
+    set({ workflow: parsed.data });
+  },
 }));
 
 function withNodePatch(node: WorkflowNode, patch: Partial<AgentNodeData>): WorkflowNode {
@@ -173,6 +189,8 @@ function withNodePatch(node: WorkflowNode, patch: Partial<AgentNodeData>): Workf
     ? patch.workspaceMode
     : node.data.workspaceMode;
   if (workspaceMode !== undefined) next.workspaceMode = workspaceMode;
+  const folderPath = Object.hasOwn(patch, "folderPath") ? patch.folderPath : node.data.folderPath;
+  if (folderPath) next.folderPath = folderPath;
 
   return { ...node, data: agentNodeDataSchema.parse(next) };
 }

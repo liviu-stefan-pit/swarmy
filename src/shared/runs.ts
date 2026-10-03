@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { workspaceModeSchema } from "./workflow";
 
 export const nodeRunStatusSchema = z.enum(["idle", "running", "completed", "failed", "cancelled"]);
 
@@ -6,6 +7,7 @@ export const runUpdateSchema = z.object({
   nodeId: z.string().min(1),
   status: z.enum(["running", "completed", "failed", "cancelled"]),
   log: z.string(),
+  workspacePath: z.string().min(1).optional(),
 });
 
 export const runStartPayloadSchema = z.object({
@@ -15,6 +17,9 @@ export const runStartPayloadSchema = z.object({
   systemPrompt: z.string().optional(),
   tools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),
+  workspaceMode: workspaceModeSchema.optional(),
+  repositoryPath: z.string().min(1).optional(),
+  folderPath: z.string().min(1).optional(),
 });
 
 export const runCancelPayloadSchema = z.object({

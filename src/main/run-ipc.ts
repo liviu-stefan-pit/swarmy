@@ -25,6 +25,9 @@ export function registerRunIpc(engine: EngineHost): void {
         ...(parsed.systemPrompt !== undefined ? { systemPrompt: parsed.systemPrompt } : {}),
         ...(parsed.tools !== undefined ? { tools: parsed.tools } : {}),
         ...(parsed.disallowedTools !== undefined ? { disallowedTools: parsed.disallowedTools } : {}),
+        ...(parsed.workspaceMode ? { workspaceMode: parsed.workspaceMode } : {}),
+        ...(parsed.repositoryPath ? { repositoryPath: parsed.repositoryPath } : {}),
+        ...(parsed.folderPath ? { folderPath: parsed.folderPath } : {}),
       });
       if (result.type !== "run.done") {
         throw new Error("Unexpected engine response");
@@ -33,6 +36,7 @@ export function registerRunIpc(engine: EngineHost): void {
         nodeId: result.nodeId,
         status: result.status,
         log: result.log,
+        ...(result.workspacePath ? { workspacePath: result.workspacePath } : {}),
       });
     } catch (error) {
       throw new Error(scrub(errorText(error), apiKey), { cause: error });

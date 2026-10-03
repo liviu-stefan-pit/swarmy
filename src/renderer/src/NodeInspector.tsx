@@ -175,7 +175,44 @@ function AgentFields({
           <option value="folder">folder</option>
         </select>
       </label>
+      {data.workspaceMode === "folder" ? (
+        <label className="block space-y-1 text-xs text-zinc-400">
+          <span>Folder</span>
+          <input
+            data-testid="inspector-folder-path"
+            className={fieldClass}
+            value={data.folderPath ?? ""}
+            placeholder="Folder path"
+            onChange={(event) => {
+              const folderPath = event.target.value.trim();
+              onChange({ folderPath: folderPath.length > 0 ? folderPath : undefined });
+            }}
+          />
+        </label>
+      ) : null}
+      {data.workspaceMode === "repo" ? <WorkflowRepositoryField /> : null}
     </>
+  );
+}
+
+function WorkflowRepositoryField() {
+  const repositoryPath = useWorkflowStore((state) => state.workflow.repositoryPath ?? "");
+  const setRepositoryPath = useWorkflowStore((state) => state.setRepositoryPath);
+
+  return (
+    <label className="block space-y-1 text-xs text-zinc-400">
+      <span>Repository</span>
+      <input
+        data-testid="workflow-repository"
+        className={fieldClass}
+        value={repositoryPath}
+        placeholder="Git clone for repo mode"
+        onChange={(event) => {
+          setRepositoryPath(event.target.value);
+        }}
+      />
+      <span className="block text-zinc-500">Shared by every repo agent in this workflow.</span>
+    </label>
   );
 }
 

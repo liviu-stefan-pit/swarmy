@@ -45,6 +45,7 @@ test("runs one agent on the fake runtime and shows the scripted reply as complet
     await page.getByTestId("run-agent").click();
 
     await expect(page.getByTestId("run-log")).toContainText("fake-agent-reply");
+    await expect(page.getByTestId("workspace-path")).toContainText("managed");
     await expect(page.getByTestId("node-status")).toHaveText("completed");
   } finally {
     await close();

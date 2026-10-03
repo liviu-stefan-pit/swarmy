@@ -49,6 +49,7 @@ export const agentNodeDataSchema = z.strictObject({
   tools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),
   workspaceMode: workspaceModeSchema.optional(),
+  folderPath: z.string().min(1).optional(),
 });
 
 function workflowNode<const Type extends string, Data extends z.ZodType>(type: Type, data: Data) {
@@ -85,6 +86,7 @@ export const workflowSchema = z.strictObject({
   viewport: viewportSchema,
   nodes: z.array(workflowNodeSchema),
   edges: z.array(workflowEdgeSchema),
+  repositoryPath: z.string().min(1).optional(),
 });
 
 export type HandleDirection = z.infer<typeof handleDirectionSchema>;

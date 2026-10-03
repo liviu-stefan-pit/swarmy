@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { runUpdateSchema } from "./runs";
-import { workflowSchema } from "./workflow";
+import { workflowSchema, workspaceModeSchema } from "./workflow";
 import { workflowSummarySchema } from "./workflows";
 
 export const engineHelloMessageSchema = z.object({
@@ -124,6 +124,9 @@ export const runStartMessageSchema = z.object({
   systemPrompt: z.string().optional(),
   tools: z.array(z.string()).optional(),
   disallowedTools: z.array(z.string()).optional(),
+  workspaceMode: workspaceModeSchema.optional(),
+  repositoryPath: z.string().min(1).optional(),
+  folderPath: z.string().min(1).optional(),
 });
 
 export const runUpdateMessageSchema = runUpdateSchema.extend({
@@ -136,6 +139,7 @@ export const runDoneMessageSchema = z.object({
   nodeId: z.string().min(1),
   status: z.enum(["completed", "failed", "cancelled"]),
   log: z.string(),
+  workspacePath: z.string().min(1).optional(),
 });
 
 export const runCancelMessageSchema = z.object({

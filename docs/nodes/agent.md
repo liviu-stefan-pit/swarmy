@@ -8,7 +8,9 @@ An Agent is a Cursor agent. It is the worker in the swarm. It can read text, a f
 
 Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**, and **Cancel**. The pill reads `idle` until you run the node. A run moves it through `running`, then `completed`, `failed`, or `cancelled`.
 
-**Run** sends that agent's task prompt to one Cursor agent. The reply streams into the **Run log** under the canvas. **Cancel** stops the run that is in progress. The run uses a temporary directory on this PC. It does not create a git worktree yet. Only one agent runs at a time. Steering text is not on the card yet.
+**Run** sends that agent's task prompt to one Cursor agent. The reply streams into the **Run log** under the canvas. **Cancel** stops the run that is in progress. Only one agent runs at a time. Steering text is not on the card yet.
+
+The run uses the workspace mode on this agent. While it runs, the **Run log** shows the workspace path. After the run finishes, Swarmy deletes a `repo` worktree or a `managed` folder. A `folder` path is left in place.
 
 Select the card. The inspector on the right edits that agent only:
 
@@ -21,9 +23,13 @@ Select the card. The inspector on the right edits that agent only:
 | Template variables | Every `{{name}}` token in the two prompts. The list is not filled from upstream nodes yet |
 | Tools | **Default** leaves the field off, which means the SDK's default toolset. **Only these** stores an allow list. An empty list means no built-in tools |
 | Disallowed tools | Same two choices for the deny list |
-| Workspace mode | `repo`, `managed`, or `folder`. Leave it unset until you choose |
+| Workspace mode | `repo`, `managed`, or `folder`. Leave it unset and the run uses `managed` |
+| Repository | Shown when the mode is `repo`. The git clone for this workflow. Every repo agent shares it |
+| Folder | Shown when the mode is `folder`. The plain folder this agent writes in. Only one run may use it at a time |
 
 A second agent keeps its own prompts. Editing one does not copy them onto the other.
+
+Choose `repo` and the inspector shows **Repository**. That path is a git clone stored on the workflow, so every repo agent in the workflow shares it. Swarmy adds a worktree under `%LOCALAPPDATA%\Swarmy\wt\<id>` on branch `swarm/<id>`. The worktree is not the clone's main folder. `managed` creates `%LOCALAPPDATA%\Swarmy\managed\<id>` and runs `git init` there. `folder` uses the folder you typed.
 
 Inputs are on the left. Outputs are on the right.
 
@@ -44,7 +50,6 @@ Several sources may share one input. A Text node and a Planner may both wire int
 
 | Phase | What arrives |
 | --- | --- |
-| 9 | A workspace per run: repo, managed folder, or plain folder, instead of the temporary directory |
 | 10 | The whole graph runs, and this node's text and diff are the handoff |
 | 14 | Tool limits and a hook that blocks dangerous shell commands |
 
@@ -67,7 +72,7 @@ Several sources may share one input. A Text node and a Planner may both wire int
 }
 ```
 
-`label` is required. The other fields are optional.
+`label` is required. The other fields are optional. `folderPath` is the folder used when `workspaceMode` is `folder`. The git clone for `repo` mode is `repositoryPath` on the workflow, not on this node.
 
 `tools: []` means no built-in tools. Leaving `tools` out means the default toolset. Those are not the same, and saving the node does not turn one into the other. `disallowedTools` works the same way.
 

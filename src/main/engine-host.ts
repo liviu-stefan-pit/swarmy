@@ -252,6 +252,7 @@ function broadcastRunUpdate(message: Extract<EngineMessage, { type: "run.update"
     nodeId: message.nodeId,
     status: message.status,
     log: message.log,
+    ...(message.workspacePath ? { workspacePath: message.workspacePath } : {}),
   });
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {

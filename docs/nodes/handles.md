@@ -59,7 +59,7 @@ A missing node, an unknown type, a handle the node does not have, or two nodes w
 
 ## Workflow document
 
-A workflow is one JSON object. Every node stores a `label`. An agent also stores its model, prompts, tool lists, and workspace mode. Those fields are described on the [Agent](agent.md) page. `tools: []` is an empty allow list. Omitting `tools` means the default toolset.
+A workflow is one JSON object. Every node stores a `label`. An agent also stores its model, prompts, tool lists, workspace mode, and folder path. Those fields are described on the [Agent](agent.md) page. `tools: []` is an empty allow list. Omitting `tools` means the default toolset. `repositoryPath` on the workflow is the git clone used when an agent runs in `repo` mode. Workspace mode is not a handle.
 
 ```json
 {
@@ -94,7 +94,8 @@ A workflow is one JSON object. Every node stores a `label`. An agent also stores
 | `nodes[].type` | A type from the table above |
 | `nodes[].position` | `x` and `y` numbers, in canvas coordinates |
 | `nodes[].data.label` | Non-empty string shown on the card |
-| `nodes[].data` on an agent | Optional `modelId`, `systemPrompt`, `taskPrompt`, `tools`, `disallowedTools`, and `workspaceMode` (`repo`, `managed`, or `folder`). Run status is not stored here |
+| `repositoryPath` | Optional path of the git clone. A `repo` run requires it. Worktrees are created outside this clone |
+| `nodes[].data` on an agent | Optional `modelId`, `systemPrompt`, `taskPrompt`, `tools`, `disallowedTools`, `workspaceMode` (`repo`, `managed`, or `folder`), and `folderPath`. Run status is not stored here |
 | `edges[].id` | Unique, non-empty |
 | `edges[].source`, `target` | Node ids that exist |
 | `edges[].sourceHandle` | An output id of the source node |

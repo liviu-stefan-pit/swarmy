@@ -28,7 +28,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 6 | Node inspector and agent config | [x] | phase-06 | 2026-10-03 |
 | 7 | Workflow persistence | [x] | phase-07 | 2026-10-03 |
 | 8 | Agent runtime and single run | [x] | phase-08 | 2026-10-03 |
-| 9 | Workspaces | [ ] | | |
+| 9 | Workspaces | [x] | phase-09 | 2026-10-03 |
 | 10 | LangGraph orchestrator | [ ] | | |
 | 11 | Run control, steering, resume | [ ] | | |
 | 12 | Approval gates | [ ] | | |
@@ -765,7 +765,13 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- `WorkspaceManager` implements D7. `repo` adds a worktree at `%LOCALAPPDATA%\Swarmy\wt\<id>` on branch `swarm/<id>`. The workflow's `repositoryPath` is required. `managed` creates `%LOCALAPPDATA%\Swarmy\managed\<id>` and runs `git init`. `folder` uses the agent's `folderPath` and allows one writer. `SWARMY_WORKSPACES_DIR` overrides the root. Tests use that override so they do not write the real AppData folder.
+- An agent with no workspace mode runs as `managed`. The connection hello probe still uses a temp directory.
+- Teardown order is taskkill `/T /F` for child pids the manager is tracking (including git processes it spawned), `chdir` away from the workspace, then delete with backoff 50ms, 150ms, 500ms, 2000ms. `repo` uses `git worktree remove --force` before the directory delete. `folder` is not deleted. The sleeper test passed on Windows: a Node process holding the worktree was killed and `git worktree list` no longer showed it.
+- The `swarm/<id>` branch stays in the clone after the worktree is removed, so Phase 19 can still merge it.
+- A single-agent run uses that workspace instead of a temp directory. The run log shows the path while the run is in progress. The renderer still does not import `@cursor/sdk`.
+- Node docs updated (decision D13): `docs/nodes/agent.md`, the index, and `handles.md`. No new decision. No later phase prompt changed.
+- `npm run verify` exited 0.
 
 ---
 
