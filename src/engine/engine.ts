@@ -4,6 +4,7 @@ import { join } from "node:path";
 import { parseEngineMessage, type EngineMessage } from "@shared/protocol";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
+import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
 
 export interface EnginePort {
   postMessage(message: EngineMessage): void;
@@ -12,12 +13,17 @@ export interface EnginePort {
 
 export function attachEngine(port: EnginePort, runtime?: AgentRuntime): void {
   let runtimePromise: Promise<AgentRuntime> | undefined;
+  let workflows: WorkflowDb | undefined;
   const getRuntime = (): Promise<AgentRuntime> => {
     if (runtime) {
       return Promise.resolve(runtime);
     }
     runtimePromise ??= createRuntime();
     return runtimePromise;
+  };
+  const getWorkflows = (): WorkflowDb => {
+    workflows ??= openWorkflowDb(workflowDataDir());
+    return workflows;
   };
 
   port.onMessage((input: unknown) => {
@@ -43,6 +49,11 @@ export function attachEngine(port: EnginePort, runtime?: AgentRuntime): void {
 
     if (message.type === "cursor.hello") {
       void answerHello(port, getRuntime(), message);
+      return;
+    }
+
+    if (isWorkflowRequest(message)) {
+      answerWorkflow(port, getWorkflows, message);
     }
   });
 }
@@ -115,5 +126,42 @@ function readMessage(input: unknown): EngineMessage | undefined {
     return parseEngineMessage(input);
   } catch {
     return undefined;
+  }
+}
+
+type WorkflowRequest = Extract<
+  EngineMessage,
+  { type: "workflow.save" | "workflow.load" | "workflow.list" | "workflow.delete" }
+>;
+
+function isWorkflowRequest(message: EngineMessage): message is WorkflowRequest {
+  return (
+    message.type === "workflow.save" ||
+    message.type === "workflow.load" ||
+    message.type === "workflow.list" ||
+    message.type === "workflow.delete"
+  );
+}
+
+function answerWorkflow(port: EnginePort, getWorkflows: () => WorkflowDb, message: WorkflowRequest): void {
+  try {
+    const db = getWorkflows();
+    if (message.type === "workflow.save") {
+      port.postMessage({ type: "workflow.saveResult", id: message.id, summary: db.save(message.workflow) });
+      return;
+    }
+    if (message.type === "workflow.load") {
+      port.postMessage({ type: "workflow.loadResult", id: message.id, workflow: db.load(message.workflowId) });
+      return;
+    }
+    if (message.type === "workflow.list") {
+      port.postMessage({ type: "workflow.listResult", id: message.id, workflows: db.list() });
+      return;
+    }
+    db.delete(message.workflowId);
+    port.postMessage({ type: "workflow.deleteResult", id: message.id });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "The workflow request failed";
+    port.postMessage({ type: "workflow.failed", id: message.id, message: text });
   }
 }

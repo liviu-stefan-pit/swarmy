@@ -1,4 +1,6 @@
 import { z } from "zod";
+import { workflowSchema } from "./workflow";
+import { workflowSummarySchema } from "./workflows";
 
 export const engineHelloMessageSchema = z.object({
   type: z.literal("engine.hello"),
@@ -59,6 +61,58 @@ export const sqliteProbeResultMessageSchema = z.object({
   message: z.string().optional(),
 });
 
+export const workflowSaveMessageSchema = z.object({
+  type: z.literal("workflow.save"),
+  id: z.string().min(1),
+  workflow: workflowSchema,
+});
+
+export const workflowSaveResultMessageSchema = z.object({
+  type: z.literal("workflow.saveResult"),
+  id: z.string().min(1),
+  summary: workflowSummarySchema,
+});
+
+export const workflowLoadMessageSchema = z.object({
+  type: z.literal("workflow.load"),
+  id: z.string().min(1),
+  workflowId: z.string().min(1),
+});
+
+export const workflowLoadResultMessageSchema = z.object({
+  type: z.literal("workflow.loadResult"),
+  id: z.string().min(1),
+  workflow: workflowSchema,
+});
+
+export const workflowListMessageSchema = z.object({
+  type: z.literal("workflow.list"),
+  id: z.string().min(1),
+});
+
+export const workflowListResultMessageSchema = z.object({
+  type: z.literal("workflow.listResult"),
+  id: z.string().min(1),
+  workflows: z.array(workflowSummarySchema),
+});
+
+export const workflowDeleteMessageSchema = z.object({
+  type: z.literal("workflow.delete"),
+  id: z.string().min(1),
+  workflowId: z.string().min(1),
+});
+
+export const workflowDeleteResultMessageSchema = z.object({
+  type: z.literal("workflow.deleteResult"),
+  id: z.string().min(1),
+});
+
+export const workflowFailedMessageSchema = z.object({
+  type: z.literal("workflow.failed"),
+  id: z.string().min(1),
+  message: z.string().min(1),
+});
+
 export const engineMessageSchema = z.discriminatedUnion("type", [
   engineHelloMessageSchema,
   engineReadyMessageSchema,
@@ -70,6 +124,15 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   cursorHelloResultMessageSchema,
   cursorFailedMessageSchema,
   sqliteProbeResultMessageSchema,
+  workflowSaveMessageSchema,
+  workflowSaveResultMessageSchema,
+  workflowLoadMessageSchema,
+  workflowLoadResultMessageSchema,
+  workflowListMessageSchema,
+  workflowListResultMessageSchema,
+  workflowDeleteMessageSchema,
+  workflowDeleteResultMessageSchema,
+  workflowFailedMessageSchema,
 ]);
 
 export type EngineMessage = z.infer<typeof engineMessageSchema>;

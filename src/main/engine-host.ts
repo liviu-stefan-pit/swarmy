@@ -20,18 +20,30 @@ import { ReconnectCounter } from "./reconnect-counter";
 const RESTART_DELAY_MS = 1000;
 const TEST_TIMEOUT_MS = 30_000;
 const HELLO_TIMEOUT_MS = 180_000;
+const WORKFLOW_TIMEOUT_MS = 10_000;
 
-export type CursorRequest = Extract<EngineMessage, { type: "cursor.test" | "cursor.hello" }>;
-export type CursorSuccess = Extract<EngineMessage, { type: "cursor.testResult" | "cursor.helloResult" }>;
+const resultByRequest = {
+  "cursor.test": "cursor.testResult",
+  "cursor.hello": "cursor.helloResult",
+  "workflow.save": "workflow.saveResult",
+  "workflow.load": "workflow.loadResult",
+  "workflow.list": "workflow.listResult",
+  "workflow.delete": "workflow.deleteResult",
+} as const;
+
+type EngineRequestType = keyof typeof resultByRequest;
+type EngineRequest = Extract<EngineMessage, { type: EngineRequestType }>;
+type EngineSuccess = Extract<EngineMessage, { type: (typeof resultByRequest)[EngineRequestType] }>;
+type EngineFailure = Extract<EngineMessage, { type: "cursor.failed" | "workflow.failed" }>;
 
 export interface EngineHost {
   bindWindow(window: BrowserWindow): void;
-  request(message: CursorRequest): Promise<CursorSuccess>;
+  request(message: EngineRequest): Promise<EngineSuccess>;
 }
 
 interface Waiter {
-  expected: CursorSuccess["type"];
-  resolve: (message: CursorSuccess) => void;
+  expected: EngineSuccess["type"];
+  resolve: (message: EngineSuccess) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout>;
 }
@@ -83,7 +95,7 @@ export function startEngineHost(): EngineHost {
           logSqliteProbe(parsed);
           return;
         }
-        if (parsed.type === "cursor.testResult" || parsed.type === "cursor.helloResult" || parsed.type === "cursor.failed") {
+        if (isEngineReply(parsed)) {
           settle(pending, parsed);
         }
       } catch (error) {
@@ -149,19 +161,24 @@ export function startEngineHost(): EngineHost {
       if (!current) {
         return Promise.reject(new Error("Engine is not connected"));
       }
-      const expected = message.type === "cursor.test" ? "cursor.testResult" : "cursor.helloResult";
-      const timeoutMs = message.type === "cursor.test" ? TEST_TIMEOUT_MS : HELLO_TIMEOUT_MS;
-      const timeoutMessage = message.type === "cursor.test" ? "Test connection timed out" : "Hello run timed out";
+      const expected = resultByRequest[message.type];
+      const timeout = timeoutFor(message.type);
       return new Promise((resolve, reject) => {
         const timer = setTimeout(() => {
           pending.delete(message.id);
-          reject(new Error(timeoutMessage));
-        }, timeoutMs);
+          reject(new Error(timeout.timeoutMessage));
+        }, timeout.timeoutMs);
         pending.set(message.id, {
           expected,
           timer,
-          resolve,
           reject,
+          resolve: (value) => {
+            if (value.type !== expected) {
+              reject(new Error("Unexpected engine response"));
+              return;
+            }
+            resolve(value);
+          },
         });
         current.postMessage(message);
       });
@@ -169,17 +186,14 @@ export function startEngineHost(): EngineHost {
   };
 }
 
-function settle(
-  pending: Map<string, Waiter>,
-  message: Extract<EngineMessage, { type: "cursor.testResult" | "cursor.helloResult" | "cursor.failed" }>,
-): void {
+function settle(pending: Map<string, Waiter>, message: EngineSuccess | EngineFailure): void {
   const waiter = pending.get(message.id);
   if (!waiter) {
     return;
   }
   pending.delete(message.id);
   clearTimeout(waiter.timer);
-  if (message.type === "cursor.failed") {
+  if (message.type === "cursor.failed" || message.type === "workflow.failed") {
     waiter.reject(new Error(message.message));
     return;
   }
@@ -188,6 +202,33 @@ function settle(
     return;
   }
   waiter.resolve(message);
+}
+
+function isEngineReply(message: EngineMessage): message is EngineSuccess | EngineFailure {
+  return (
+    message.type === "cursor.testResult" ||
+    message.type === "cursor.helloResult" ||
+    message.type === "cursor.failed" ||
+    message.type === "workflow.saveResult" ||
+    message.type === "workflow.loadResult" ||
+    message.type === "workflow.listResult" ||
+    message.type === "workflow.deleteResult" ||
+    message.type === "workflow.failed"
+  );
+}
+
+function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessage: string } {
+  switch (type) {
+    case "cursor.hello":
+      return { timeoutMs: HELLO_TIMEOUT_MS, timeoutMessage: "Hello run timed out" };
+    case "cursor.test":
+      return { timeoutMs: TEST_TIMEOUT_MS, timeoutMessage: "Test connection timed out" };
+    case "workflow.delete":
+    case "workflow.list":
+    case "workflow.load":
+    case "workflow.save":
+      return { timeoutMs: WORKFLOW_TIMEOUT_MS, timeoutMessage: "Workflow request timed out" };
+  }
 }
 
 function logSqliteProbe(message: Extract<EngineMessage, { type: "sqlite.probeResult" }>): void {

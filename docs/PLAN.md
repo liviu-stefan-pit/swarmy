@@ -26,7 +26,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 4 | Workflow model and validation | [x] | phase-04 | 2026-10-03 |
 | 5 | Canvas editor | [x] | phase-05 | 2026-10-03 |
 | 6 | Node inspector and agent config | [x] | phase-06 | 2026-10-03 |
-| 7 | Workflow persistence | [ ] | | |
+| 7 | Workflow persistence | [x] | phase-07 | 2026-10-03 |
 | 8 | Agent runtime and single run | [ ] | | |
 | 9 | Workspaces | [ ] | | |
 | 10 | LangGraph orchestrator | [ ] | | |
@@ -658,7 +658,12 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- Workflows persist in `swarmy.db` under `SWARMY_DATA_DIR`, or `%APPDATA%\Swarmy` when that variable is unset. The `workflows` table stores id, name, graph JSON, `created_at`, and `updated_at`. The engine opens it with `node:sqlite`. D6 stands.
+- Save is an upsert. Load returns the same graph, including handle ids. A second save changes `updated_at` and keeps one row. Delete removes that row and leaves the others.
+- The window lists workflows and can create, rename, and delete the current one. Edits autosave about 400ms after the last change. Closing the window writes a save that is still waiting.
+- End-to-end launches set `SWARMY_DATA_DIR` to a temp directory. `npm run verify` exited 0.
+- Node docs are unchanged. This phase does not add a node type, change a handle, or change what a node does on the canvas.
+- No deviations that change a later phase. Phase 10 can add the checkpointer to this same database file.
 
 ---
 

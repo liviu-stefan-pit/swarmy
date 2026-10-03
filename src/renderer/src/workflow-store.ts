@@ -30,6 +30,8 @@ type WorkflowState = {
   selectNode: (id: string | null) => void;
   updateSelectedNode: (patch: Partial<AgentNodeData>) => void;
   setViewport: (viewport: Viewport) => void;
+  replaceWorkflow: (workflow: Workflow) => void;
+  renameWorkflow: (name: string) => void;
 };
 
 function nextId(prefix: string, ids: readonly string[]): string {
@@ -134,6 +136,18 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   setViewport: (viewport) => {
     const workflow = get().workflow;
     set({ workflow: { ...workflow, viewport } });
+  },
+  replaceWorkflow: (workflow) => {
+    const parsed = workflowSchema.parse(workflow);
+    set({ workflow: parsed, selectedNodeId: null, connectionError: null });
+  },
+  renameWorkflow: (name) => {
+    const workflow = get().workflow;
+    const parsed = workflowSchema.safeParse({ ...workflow, name });
+    if (!parsed.success) {
+      return;
+    }
+    set({ workflow: parsed.data });
   },
 }));
 

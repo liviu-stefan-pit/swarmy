@@ -1,5 +1,5 @@
-import { _electron as electron, expect, test, type Page } from "@playwright/test";
-import { join } from "node:path";
+import { expect, test, type Page } from "@playwright/test";
+import { launchSwarmy } from "./launch-app";
 
 const nodeDragType = "application/swarmy-node";
 
@@ -35,13 +35,7 @@ async function dropPaletteNode(page: Page, type: string, x: number, y: number): 
 }
 
 test("adds two agent nodes and connects a compatible pair", async () => {
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out", "main", "index.js")],
-    env: {
-      ...process.env,
-      SWARMY_RUNTIME: "fake",
-    },
-  });
+  const { app, close } = await launchSwarmy();
 
   try {
     const page = await app.firstWindow();
@@ -57,18 +51,12 @@ test("adds two agent nodes and connects a compatible pair", async () => {
 
     await expect(page.getByTestId("canvas-edge")).toHaveCount(1);
   } finally {
-    await app.close();
+    await close();
   }
 });
 
 test("selects an agent, types a prompt, and shows the new label without a reload", async () => {
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out", "main", "index.js")],
-    env: {
-      ...process.env,
-      SWARMY_RUNTIME: "fake",
-    },
-  });
+  const { app, close } = await launchSwarmy();
 
   try {
     const page = await app.firstWindow();
@@ -82,6 +70,6 @@ test("selects an agent, types a prompt, and shows the new label without a reload
     await expect(page.getByTestId("canvas-node").locator("h3")).toHaveText("Writer");
     await expect(page.getByTestId("inspector-system-prompt")).toHaveValue("Reply with one sentence.");
   } finally {
-    await app.close();
+    await close();
   }
 });

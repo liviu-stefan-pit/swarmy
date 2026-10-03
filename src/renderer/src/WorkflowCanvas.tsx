@@ -18,6 +18,7 @@ import { getNodeType, nodeTypes } from "@shared/node-registry";
 import { NodeInspector } from "./NodeInspector";
 import { Palette } from "./Palette";
 import { WorkflowEdge } from "./WorkflowEdge";
+import { WorkflowLibrary } from "./WorkflowLibrary";
 import { WorkflowNodeCard } from "./WorkflowNodeCard";
 import { useWorkflowStore } from "./workflow-store";
 
@@ -173,8 +174,9 @@ function FlowSurface() {
 }
 
 export function WorkflowCanvas() {
+  const workflowId = useWorkflowStore((state) => state.workflow.id);
   return (
-    <ReactFlowProvider>
+    <ReactFlowProvider key={workflowId}>
       <FlowSurface />
     </ReactFlowProvider>
   );
@@ -182,10 +184,12 @@ export function WorkflowCanvas() {
 
 export function WorkflowEditor() {
   return (
-    <div className="flex min-h-0 flex-1">
-      <Palette />
-      <WorkflowCanvas />
-      <NodeInspector />
-    </div>
+    <WorkflowLibrary>
+      <div className="flex min-h-0 flex-1">
+        <Palette />
+        <WorkflowCanvas />
+        <NodeInspector />
+      </div>
+    </WorkflowLibrary>
   );
 }

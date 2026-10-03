@@ -1,14 +1,8 @@
-import { _electron as electron, expect, test } from "@playwright/test";
-import { join } from "node:path";
+import { expect, test } from "@playwright/test";
+import { launchSwarmy } from "./launch-app";
 
 test("Electron window title is Swarmy", async () => {
-  const app = await electron.launch({
-    args: [join(process.cwd(), "out", "main", "index.js")],
-    env: {
-      ...process.env,
-      SWARMY_RUNTIME: "fake",
-    },
-  });
+  const { app, close } = await launchSwarmy();
 
   try {
     await app.firstWindow();
@@ -21,6 +15,6 @@ test("Electron window title is Swarmy", async () => {
     expect(runtime).toBe("fake");
     expect(title).toBe("Swarmy");
   } finally {
-    await app.close();
+    await close();
   }
 });

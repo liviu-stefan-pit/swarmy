@@ -48,6 +48,31 @@ const swarmy: SwarmyApi = {
       });
     },
   },
+  workflows: {
+    list() {
+      return Promise.resolve([]);
+    },
+    load() {
+      return Promise.resolve({
+        id: "untitled",
+        name: "Untitled",
+        viewport: { x: 0, y: 0, zoom: 1 },
+        nodes: [],
+        edges: [],
+      });
+    },
+    save(workflow) {
+      return Promise.resolve({
+        id: workflow.id,
+        name: workflow.name,
+        createdAt: 0,
+        updatedAt: 0,
+      });
+    },
+    delete() {
+      return Promise.resolve();
+    },
+  },
 };
 
 window.swarmy = swarmy;

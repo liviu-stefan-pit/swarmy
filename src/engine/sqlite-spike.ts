@@ -15,9 +15,10 @@ export class SqliteModuleMissingError extends Error {
 interface SqliteStatement {
   run(...params: unknown[]): unknown;
   get(...params: unknown[]): unknown;
+  all(...params: unknown[]): unknown;
 }
 
-interface SqliteDatabase {
+export interface SqliteDatabase {
   exec(sql: string): void;
   prepare(sql: string): SqliteStatement;
   close(): void;
@@ -25,9 +26,13 @@ interface SqliteDatabase {
 
 type DatabaseSyncConstructor = new (path: string) => SqliteDatabase;
 
-export function roundTripSqlite(dbPath: string): string {
+export function openSqliteDatabase(path: string): SqliteDatabase {
   const DatabaseSync = loadDatabaseSync();
-  const db = new DatabaseSync(dbPath);
+  return new DatabaseSync(path);
+}
+
+export function roundTripSqlite(dbPath: string): string {
+  const db = openSqliteDatabase(dbPath);
   try {
     db.exec("CREATE TABLE probe (value TEXT)");
     db.prepare("INSERT INTO probe (value) VALUES (?)").run("swarmy");

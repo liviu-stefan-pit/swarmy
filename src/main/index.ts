@@ -1,8 +1,9 @@
 import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
 import { appInfo } from "@shared/app-info";
-import { startEngineHost } from "./engine-host";
+import { startEngineHost, type EngineHost } from "./engine-host";
 import { registerSettingsIpc } from "./settings-ipc";
+import { registerWorkflowIpc } from "./workflow-ipc";
 
 app.setName(appInfo().name);
 
@@ -39,14 +40,46 @@ function createWindow(): BrowserWindow {
 void app.whenReady().then(() => {
   const engine = startEngineHost();
   registerSettingsIpc(engine);
-  engine.bindWindow(createWindow());
+  registerWorkflowIpc(engine);
+  openWindow(engine);
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      engine.bindWindow(createWindow());
+      openWindow(engine);
     }
   });
 });
+
+function openWindow(engine: EngineHost): void {
+  const window = createWindow();
+  flushWorkflowOnClose(window);
+  engine.bindWindow(window);
+}
+
+function flushWorkflowOnClose(window: BrowserWindow): void {
+  let closing = false;
+  window.on("close", (event) => {
+    if (closing || window.webContents.isDestroyed()) {
+      return;
+    }
+    event.preventDefault();
+    closing = true;
+    const flush = window.webContents
+      .executeJavaScript("globalThis.__swarmyFlushWorkflow?.() ?? null")
+      .then(
+        () => undefined,
+        () => undefined,
+      );
+    const timeout = new Promise<void>((resolve) => {
+      setTimeout(resolve, 3000);
+    });
+    void Promise.race([flush, timeout]).finally(() => {
+      if (!window.isDestroyed()) {
+        window.destroy();
+      }
+    });
+  });
+}
 
 app.on("window-all-closed", () => {
   app.quit();

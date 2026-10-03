@@ -10,6 +10,16 @@ import {
   testConnectionChannel,
 } from "@shared/settings";
 import type { SwarmyApi } from "@shared/swarmy-api";
+import { workflowSchema } from "@shared/workflow";
+import {
+  workflowDeleteChannel,
+  workflowIdPayloadSchema,
+  workflowListChannel,
+  workflowListResultSchema,
+  workflowLoadChannel,
+  workflowSaveChannel,
+  workflowSummarySchema,
+} from "@shared/workflows";
 import { z } from "zod";
 
 const listeners = new Set<(status: EngineStatus) => void>();
@@ -56,6 +66,23 @@ const swarmy: SwarmyApi = {
     },
     async runHello() {
       return helloInfoSchema.parse(await ipcRenderer.invoke(helloChannel));
+    },
+  },
+  workflows: {
+    async list() {
+      return workflowListResultSchema.parse(await ipcRenderer.invoke(workflowListChannel));
+    },
+    async load(id) {
+      const parsed = workflowIdPayloadSchema.parse({ id });
+      return workflowSchema.parse(await ipcRenderer.invoke(workflowLoadChannel, parsed));
+    },
+    async save(workflow) {
+      const parsed = workflowSchema.parse(workflow);
+      return workflowSummarySchema.parse(await ipcRenderer.invoke(workflowSaveChannel, parsed));
+    },
+    async delete(id) {
+      const parsed = workflowIdPayloadSchema.parse({ id });
+      await ipcRenderer.invoke(workflowDeleteChannel, parsed);
     },
   },
 };
