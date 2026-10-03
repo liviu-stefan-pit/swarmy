@@ -15,6 +15,7 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { getNodeType, nodeTypes } from "@shared/node-registry";
+import { NodeInspector } from "./NodeInspector";
 import { Palette } from "./Palette";
 import { WorkflowEdge } from "./WorkflowEdge";
 import { WorkflowNodeCard } from "./WorkflowNodeCard";
@@ -184,6 +185,7 @@ export function WorkflowEditor() {
     <div className="flex min-h-0 flex-1">
       <Palette />
       <WorkflowCanvas />
+      <NodeInspector />
     </div>
   );
 }

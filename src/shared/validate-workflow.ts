@@ -1,6 +1,15 @@
-import { ZodError } from "zod";
+import { z, ZodError } from "zod";
 import { getNodeType } from "./node-registry";
 import { workflowSchema, type Workflow } from "./workflow";
+
+const nodeIdentitySchema = z.object({
+  nodes: z.array(
+    z.object({
+      id: z.string(),
+      type: z.string(),
+    }),
+  ),
+});
 
 export type WorkflowConnection = {
   source: string;
@@ -27,6 +36,10 @@ export type ValidatedWorkflow = {
 export function validateWorkflow(input: unknown): ValidatedWorkflow {
   const parsed = workflowSchema.safeParse(input);
   if (!parsed.success) {
+    const unknown = unknownTypeMessages(input);
+    if (unknown.length > 0) {
+      throw new WorkflowValidationError(unknown);
+    }
     throw new WorkflowValidationError(schemaErrors(parsed.error));
   }
 
@@ -96,6 +109,14 @@ function repeated(ids: string[]): string[] {
     seen.add(id);
   }
   return duplicates;
+}
+
+function unknownTypeMessages(input: unknown): string[] {
+  const rough = nodeIdentitySchema.safeParse(input);
+  if (!rough.success) return [];
+  return rough.data.nodes.flatMap((node) =>
+    getNodeType(node.type) ? [] : [`Unknown node type "${node.type}" on node ${node.id}`],
+  );
 }
 
 function unknownTypeErrors(workflow: Workflow): string[] {

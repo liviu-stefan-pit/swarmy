@@ -8,6 +8,21 @@ An Agent is a Cursor agent. It is the worker in the swarm. It can read text, a f
 
 Drag **Agent** onto the canvas. The card shows the label and a status pill. The pill reads `idle` until a later phase runs the node.
 
+Select the card. The inspector on the right edits that agent only:
+
+| Field | What you set |
+| --- | --- |
+| Label | The name on the card |
+| Model | A model id, as text. The live catalog is not in this list yet |
+| System prompt | Instructions for the agent |
+| Task prompt | The task for this node |
+| Template variables | Every `{{name}}` token in the two prompts. The list is not filled from upstream nodes yet |
+| Tools | **Default** leaves the field off, which means the SDK's default toolset. **Only these** stores an allow list. An empty list means no built-in tools |
+| Disallowed tools | Same two choices for the deny list |
+| Workspace mode | `repo`, `managed`, or `folder`. Leave it unset until you choose |
+
+A second agent keeps its own prompts. Editing one does not copy them onto the other.
+
 Inputs are on the left. Outputs are on the right.
 
 | Handle | Direction | Type | Connect it to |
@@ -27,7 +42,6 @@ Several sources may share one input. A Text node and a Planner may both wire int
 
 | Phase | What arrives |
 | --- | --- |
-| 6 | Label, model, prompts, tool allow and deny lists, workspace mode |
 | 8 | Run one agent, watch its log, cancel it |
 | 9 | A workspace per run: repo, managed folder, or plain folder |
 | 10 | The whole graph runs, and this node's text and diff are the handoff |
@@ -40,8 +54,20 @@ Several sources may share one input. A Text node and a Planner may both wire int
   "id": "writer",
   "type": "agent",
   "position": { "x": 280, "y": 40 },
-  "data": { "label": "Writer" }
+  "data": {
+    "label": "Writer",
+    "modelId": "composer-2.5",
+    "systemPrompt": "You write the change. Use {{goal}}.",
+    "taskPrompt": "Implement {{goal}}.",
+    "tools": [],
+    "disallowedTools": ["Shell"],
+    "workspaceMode": "repo"
+  }
 }
 ```
 
-`data` is only `label` until Phase 6.
+`label` is required. The other fields are optional.
+
+`tools: []` means no built-in tools. Leaving `tools` out means the default toolset. Those are not the same, and saving the node does not turn one into the other. `disallowedTools` works the same way.
+
+`{{goal}}` in the prompts shows up in the inspector as a template variable. The name is not stored on its own, and nothing fills it from an upstream node yet.

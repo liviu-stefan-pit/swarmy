@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { expect, it } from "vitest";
-import { handleSchema } from "./workflow";
+import { handleSchema, workflowSchema } from "./workflow";
 import { nodeTypes } from "./node-registry";
 import { validateWorkflow } from "./validate-workflow";
 
@@ -44,6 +44,29 @@ it("registers the eight node types and their handles", () => {
     }
   }
 });
+
+it("keeps an empty tools array and leaves omitted tools undefined", () => {
+  const emptyTools = agentData({ label: "Agent", tools: [] });
+  expect(emptyTools.tools).toEqual([]);
+
+  const omitted = agentData({ label: "Agent" });
+  expect(omitted.tools).toBeUndefined();
+});
+
+function agentData(data: { label: string; tools?: string[] }): { label: string; tools?: string[] } {
+  const workflow = workflowSchema.parse({
+    id: "tools",
+    name: "Tools",
+    viewport: { x: 0, y: 0, zoom: 1 },
+    nodes: [{ id: "agent-1", type: "agent", position: { x: 0, y: 0 }, data }],
+    edges: [],
+  });
+  const node = workflow.nodes[0];
+  if (!node || node.type !== "agent") {
+    throw new Error("expected an agent node");
+  }
+  return node.data;
+}
 
 it("rejects an unknown node type, a dangling edge, and a duplicate id", () => {
   const workflow = validateWorkflow(loadExample("valid-line.json")).workflow;

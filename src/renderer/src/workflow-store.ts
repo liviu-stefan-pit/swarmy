@@ -1,7 +1,16 @@
 import { create } from "zustand";
 import { getNodeType } from "@shared/node-registry";
 import { connectError, type WorkflowConnection } from "@shared/validate-workflow";
-import type { Position, Viewport, Workflow, WorkflowNode } from "@shared/workflow";
+import {
+  agentNodeDataSchema,
+  workflowNodeSchema,
+  workflowSchema,
+  type AgentNodeData,
+  type Position,
+  type Viewport,
+  type Workflow,
+  type WorkflowNode,
+} from "@shared/workflow";
 
 const emptyWorkflow: Workflow = {
   id: "untitled",
@@ -19,6 +28,7 @@ type WorkflowState = {
   connect: (connection: WorkflowConnection) => void;
   moveNode: (id: string, position: Position) => void;
   selectNode: (id: string | null) => void;
+  updateSelectedNode: (patch: Partial<AgentNodeData>) => void;
   setViewport: (viewport: Viewport) => void;
 };
 
@@ -54,9 +64,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     if (!definition) return;
 
     const workflow = get().workflow;
-    const node: WorkflowNode = {
+    const node = workflowNodeSchema.parse({
       id: nextId(type, workflow.nodes.map((item) => item.id)),
-      type,
+      type: definition.type,
       position,
       data: {
         label: nextLabel(
@@ -64,7 +74,7 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
           workflow.nodes.map((item) => item.data.label),
         ),
       },
-    };
+    });
 
     set({
       workflow: { ...workflow, nodes: [...workflow.nodes, node] },
@@ -105,8 +115,50 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   selectNode: (id) => {
     set({ selectedNodeId: id });
   },
+  updateSelectedNode: (patch) => {
+    const { workflow, selectedNodeId } = get();
+    if (!selectedNodeId) return;
+
+    const current = workflow.nodes.find((node) => node.id === selectedNodeId);
+    if (!current) return;
+
+    const nextNode = withNodePatch(current, patch);
+    const parsed = workflowSchema.safeParse({
+      ...workflow,
+      nodes: workflow.nodes.map((node) => (node.id === current.id ? nextNode : node)),
+    });
+    if (!parsed.success) return;
+
+    set({ workflow: parsed.data });
+  },
   setViewport: (viewport) => {
     const workflow = get().workflow;
     set({ workflow: { ...workflow, viewport } });
   },
 }));
+
+function withNodePatch(node: WorkflowNode, patch: Partial<AgentNodeData>): WorkflowNode {
+  if (node.type !== "agent") {
+    return { ...node, data: { label: patch.label ?? node.data.label } };
+  }
+
+  const next: AgentNodeData = { label: patch.label ?? node.data.label };
+  const modelId = Object.hasOwn(patch, "modelId") ? patch.modelId : node.data.modelId;
+  if (modelId !== undefined) next.modelId = modelId;
+  const systemPrompt = Object.hasOwn(patch, "systemPrompt") ? patch.systemPrompt : node.data.systemPrompt;
+  if (systemPrompt !== undefined) next.systemPrompt = systemPrompt;
+  const taskPrompt = Object.hasOwn(patch, "taskPrompt") ? patch.taskPrompt : node.data.taskPrompt;
+  if (taskPrompt !== undefined) next.taskPrompt = taskPrompt;
+  const tools = Object.hasOwn(patch, "tools") ? patch.tools : node.data.tools;
+  if (tools !== undefined) next.tools = tools;
+  const disallowedTools = Object.hasOwn(patch, "disallowedTools")
+    ? patch.disallowedTools
+    : node.data.disallowedTools;
+  if (disallowedTools !== undefined) next.disallowedTools = disallowedTools;
+  const workspaceMode = Object.hasOwn(patch, "workspaceMode")
+    ? patch.workspaceMode
+    : node.data.workspaceMode;
+  if (workspaceMode !== undefined) next.workspaceMode = workspaceMode;
+
+  return { ...node, data: agentNodeDataSchema.parse(next) };
+}

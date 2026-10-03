@@ -25,7 +25,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 3 | Cursor connection and SDK spike | [x] | phase-03 | 2026-10-03 |
 | 4 | Workflow model and validation | [x] | phase-04 | 2026-10-03 |
 | 5 | Canvas editor | [x] | phase-05 | 2026-10-03 |
-| 6 | Node inspector and agent config | [ ] | | |
+| 6 | Node inspector and agent config | [x] | phase-06 | 2026-10-03 |
 | 7 | Workflow persistence | [ ] | | |
 | 8 | Agent runtime and single run | [ ] | | |
 | 9 | Workspaces | [ ] | | |
@@ -608,7 +608,12 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- Selecting a node opens an inspector. On an agent it edits the label, a model id (plain text), the system prompt, the task prompt, every `{{name}}` token in those prompts, the tool allow list, the deny list, and workspace mode (`repo`, `managed`, or `folder`). The token list is not filled from upstream nodes. The model field is not a live catalog.
+- Edits update the Zustand document and still parse with `workflowSchema`. An agent node is its own schema branch. Other nodes still store only `label`. `tools: []` stays an empty allow list. Leaving `tools` out stays omitted, which means the default toolset. `disallowedTools` follows the same rule.
+- `.cursor/skills/add-node-type/SKILL.md` describes how to register a type: schema, handles, palette card, inspector section, a test, and a page under `docs/nodes/`.
+- Node docs updated for the inspector (decision D13): `docs/nodes/agent.md`, the index, and `handles.md`.
+- Node type is now a discriminated union, so an unknown type fails schema parse. `validateWorkflow` still reports `Unknown node type "..." on node ...`. No later phase prompt changed.
+- `npm run verify` exited 0. No deviations that change a later phase. Running the config, and filling the model dropdown from `Cursor.models.list()`, stay in later phases.
 
 ---
 

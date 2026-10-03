@@ -2,7 +2,7 @@
 
 This is the guide to the canvas: what each node is for, how to wire it, and the JSON shape of a workflow. The connection rules are in [handles.md](handles.md). Each node has its own page.
 
-These pages match the app as of Phase 5. You can build and validate a graph. Running it comes in later phases. A page says which phase adds the behavior that is still ahead.
+These pages match the app as of Phase 6. You can build a graph and configure an agent. Running it comes in later phases. A page says which phase adds the behavior that is still ahead.
 
 | Node | Page | Takes | Produces |
 | --- | --- | --- | --- |
@@ -21,7 +21,7 @@ These pages match the app as of Phase 5. You can build and validate a graph. Run
 2. Outputs sit on the right of a card. Inputs sit on the left. Drag from an output dot to an input dot.
 3. The dots are colored by data type. A connection sticks when both ends are the same type. See [handles.md](handles.md).
 4. A mismatched connection does not stay. A message at the top of the canvas quotes the validator.
-5. Drag a card by its body to move it. Click a card to select it. Scroll to zoom, drag the empty background to pan. The minimap in the corner follows.
+5. Drag a card by its body to move it. Click a card to select it. The inspector on the right edits that node. On an agent, that is the label, model id, system prompt, task prompt, the `{{name}}` tokens in those prompts, the tool allow list, the tool deny list, and the workspace mode. Scroll to zoom, drag the empty background to pan. The minimap in the corner follows.
 6. The first node of a type is labeled with the type name (`Text`, `Agent`). The next one is `Text 2`, `Agent 2`, and so on.
 7. The API key UI is the **Cursor connection** disclosure under the canvas.
 

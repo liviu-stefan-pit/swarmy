@@ -1,5 +1,6 @@
 import { beforeEach, expect, it } from "vitest";
 import { getNodeType } from "@shared/node-registry";
+import { workflowSchema } from "@shared/workflow";
 import { useWorkflowStore } from "./workflow-store";
 
 beforeEach(() => {
@@ -37,4 +38,30 @@ it("leaves the edge list unchanged when a diff output is wired to a file input",
   expect(useWorkflowStore.getState().connectionError).toEqual(expect.any(String));
   expect(useWorkflowStore.getState().connectionError).toMatch(/diff/);
   expect(useWorkflowStore.getState().connectionError).toMatch(/file/);
+});
+
+it("editing the system prompt on the selected agent changes only that node", () => {
+  useWorkflowStore.getState().addNode("agent", { x: 0, y: 0 });
+  useWorkflowStore.getState().addNode("agent", { x: 240, y: 0 });
+
+  const [first, second] = useWorkflowStore.getState().workflow.nodes;
+  if (!first || !second) {
+    throw new Error("expected two agent nodes");
+  }
+
+  const untouched = structuredClone(second);
+  useWorkflowStore.getState().selectNode(first.id);
+  useWorkflowStore.getState().updateSelectedNode({ systemPrompt: "Stay in the repo." });
+
+  const nodes = useWorkflowStore.getState().workflow.nodes;
+  const edited = nodes.find((node) => node.id === first.id);
+  const other = nodes.find((node) => node.id === second.id);
+  if (!edited || edited.type !== "agent") {
+    throw new Error("expected the selected agent");
+  }
+
+  expect(edited.data.systemPrompt).toBe("Stay in the repo.");
+  expect(edited.data.tools).toBeUndefined();
+  expect(other).toEqual(untouched);
+  expect(workflowSchema.parse(useWorkflowStore.getState().workflow).nodes).toHaveLength(2);
 });

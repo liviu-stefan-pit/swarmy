@@ -60,3 +60,28 @@ test("adds two agent nodes and connects a compatible pair", async () => {
     await app.close();
   }
 });
+
+test("selects an agent, types a prompt, and shows the new label without a reload", async () => {
+  const app = await electron.launch({
+    args: [join(process.cwd(), "out", "main", "index.js")],
+    env: {
+      ...process.env,
+      SWARMY_RUNTIME: "fake",
+    },
+  });
+
+  try {
+    const page = await app.firstWindow();
+    await expect(page.getByTestId("engine-status")).toHaveText("Engine connected");
+
+    await dropPaletteNode(page, "agent", 80, 160);
+    await page.getByTestId("canvas-node").click();
+    await page.getByTestId("inspector-label").fill("Writer");
+    await page.getByTestId("inspector-system-prompt").fill("Reply with one sentence.");
+
+    await expect(page.getByTestId("canvas-node").locator("h3")).toHaveText("Writer");
+    await expect(page.getByTestId("inspector-system-prompt")).toHaveValue("Reply with one sentence.");
+  } finally {
+    await app.close();
+  }
+});
