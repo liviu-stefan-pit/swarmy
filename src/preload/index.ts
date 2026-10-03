@@ -1,6 +1,16 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import { engineStatusChannel, engineStatusSchema, type EngineStatus } from "@shared/protocol";
+import {
+  connectionInfoSchema,
+  hasKeyChannel,
+  helloChannel,
+  helloInfoSchema,
+  saveKeyChannel,
+  saveKeyPayloadSchema,
+  testConnectionChannel,
+} from "@shared/settings";
 import type { SwarmyApi } from "@shared/swarmy-api";
+import { z } from "zod";
 
 const listeners = new Set<(status: EngineStatus) => void>();
 let latest: EngineStatus = "reconnecting";
@@ -28,6 +38,24 @@ const swarmy: SwarmyApi = {
       return () => {
         listeners.delete(listener);
       };
+    },
+  },
+  settings: {
+    async saveKey(apiKey) {
+      const parsed = saveKeyPayloadSchema.safeParse({ apiKey });
+      if (!parsed.success) {
+        throw new Error("API key is required");
+      }
+      await ipcRenderer.invoke(saveKeyChannel, parsed.data);
+    },
+    async hasKey() {
+      return z.boolean().parse(await ipcRenderer.invoke(hasKeyChannel));
+    },
+    async testConnection() {
+      return connectionInfoSchema.parse(await ipcRenderer.invoke(testConnectionChannel));
+    },
+    async runHello() {
+      return helloInfoSchema.parse(await ipcRenderer.invoke(helloChannel));
     },
   },
 };

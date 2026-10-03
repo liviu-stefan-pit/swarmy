@@ -17,6 +17,7 @@
     "verify": "npm run typecheck && npm run lint && npm run test && npm run test:e2e"
   },
   "dependencies": {
+    "@cursor/sdk": "^1.0.35",
     "react": "^19.3.0",
     "react-dom": "^19.3.0",
     "zod": "^4.6.5"

@@ -22,7 +22,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 0 | Workspace and master plan | [x] | phase-00 | 2026-10-03 |
 | 1 | Scaffold and test harness | [x] | phase-01 | 2026-10-03 |
 | 2 | Typed IPC and engine process | [x] | phase-02 | 2026-10-03 |
-| 3 | Cursor connection and SDK spike | [ ] | | |
+| 3 | Cursor connection and SDK spike | [x] | phase-03 | 2026-10-03 |
 | 4 | Workflow model and validation | [ ] | | |
 | 5 | Canvas editor | [ ] | | |
 | 6 | Node inspector and agent config | [ ] | | |
@@ -429,7 +429,12 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- Settings has an API key field, Save, Test connection, and Run hello. The app name is set to `Swarmy` before ready, and the key is encrypted with `safeStorage` into `%APPDATA%\Swarmy\cursor-api-key.bin`. It is not written into the workflow state object, and error text sent to the window has the key redacted. After a restart the field stays empty and the window says `Key saved`.
+- Test connection calls `Cursor.me()` and `Cursor.models.list()` through `CursorSdkRuntime`. Automated tests use `FakeRuntime` and do not call the network. `SWARMY_RUNTIME=fake` selects that runtime. `@cursor/sdk` 1.0.35 is a dependency and stays external in the engine bundle (`require("@cursor/sdk")`).
+- Run hello creates an empty temp directory, runs one local agent with `local: { cwd }` pointed at it, streams, waits, and disposes. The agent store is a `JsonlLocalAgentStore` inside that directory, and `tools` is `[]`, so the probe does not use the SDK's default home-directory store or built-in file tools. The window shows the reply, the temp path, and either `systemPrompt accepted` or `systemPrompt rejected`.
+- R1: `node:sqlite` works. A utility-process spike on Electron 44.5.1 (Node 24.21.0) inserted and read back `swarmy`. The built engine process logs `node:sqlite in the engine process: ok (swarmy)`. D6 stands.
+- R2: `systemPrompt` is not accepted on this account. The rejection arrives as a finished run (`result.status === "error"`, `[invalid_argument] unknown option '--system-prompt'`). The runtime disposes that agent and retries once with the instructions prefixed to the prompt. The manual hello showed `systemPrompt rejected` and the reply `Connection probe OK — I'm here and responding; no files were changed.`
+- No decision was superseded. Phase 8 extends this runtime; it does not start over.
 
 ---
 

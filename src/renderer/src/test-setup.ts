@@ -8,6 +8,24 @@ const swarmy: SwarmyApi = {
       return () => undefined;
     },
   },
+  settings: {
+    saveKey() {
+      return Promise.resolve();
+    },
+    hasKey() {
+      return Promise.resolve(false);
+    },
+    testConnection() {
+      return Promise.resolve({ accountLabel: "test@swarmy.local", modelIds: ["fake-model"] });
+    },
+    runHello() {
+      return Promise.resolve({
+        text: "hello",
+        systemPromptAccepted: true,
+        cwd: "C:\\temp\\swarmy-hello",
+      });
+    },
+  },
 };
 
 window.swarmy = swarmy;

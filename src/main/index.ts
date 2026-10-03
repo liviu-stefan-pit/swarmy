@@ -2,6 +2,9 @@ import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
 import { appInfo } from "@shared/app-info";
 import { startEngineHost } from "./engine-host";
+import { registerSettingsIpc } from "./settings-ipc";
+
+app.setName(appInfo().name);
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -35,6 +38,7 @@ function createWindow(): BrowserWindow {
 
 void app.whenReady().then(() => {
   const engine = startEngineHost();
+  registerSettingsIpc(engine);
   engine.bindWindow(createWindow());
 
   app.on("activate", () => {
