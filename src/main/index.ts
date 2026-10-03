@@ -1,8 +1,9 @@
 import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
 import { appInfo } from "@shared/app-info";
+import { startEngineHost } from "./engine-host";
 
-function createWindow(): void {
+function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
     width: 960,
     height: 640,
@@ -28,14 +29,17 @@ function createWindow(): void {
   } else {
     void window.loadFile(join(__dirname, "../renderer/index.html"));
   }
+
+  return window;
 }
 
 void app.whenReady().then(() => {
-  createWindow();
+  const engine = startEngineHost();
+  engine.bindWindow(createWindow());
 
   app.on("activate", () => {
     if (BrowserWindow.getAllWindows().length === 0) {
-      createWindow();
+      engine.bindWindow(createWindow());
     }
   });
 });

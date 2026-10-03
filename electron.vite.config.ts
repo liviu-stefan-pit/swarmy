@@ -10,6 +10,14 @@ export default defineConfig({
     resolve: {
       alias: { "@shared": shared },
     },
+    build: {
+      rollupOptions: {
+        input: {
+          index: resolve("src/main/index.ts"),
+          engine: resolve("src/engine/index.ts"),
+        },
+      },
+    },
   },
   preload: {
     resolve: {

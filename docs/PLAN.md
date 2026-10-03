@@ -21,7 +21,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | --- | --- | --- | --- | --- |
 | 0 | Workspace and master plan | [x] | phase-00 | 2026-10-03 |
 | 1 | Scaffold and test harness | [x] | phase-01 | 2026-10-03 |
-| 2 | Typed IPC and engine process | [ ] | | |
+| 2 | Typed IPC and engine process | [x] | phase-02 | 2026-10-03 |
 | 3 | Cursor connection and SDK spike | [ ] | | |
 | 4 | Workflow model and validation | [ ] | | |
 | 5 | Canvas editor | [ ] | | |
@@ -374,7 +374,13 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- The window shows `Engine connected` when the utility process answers `engine.hello` with `engine.ready`, and `Engine reconnecting` for about a second after an unexpected exit before a new process is forked. Quit does not restart it.
+- Zod schemas in `src/shared` cover `engine.hello`, `engine.ready`, `engine.ping` (with an id), and `engine.pong`. An unknown type throws. The renderer channel `engine:status` is the enum `connected` | `reconnecting`. Preload exposes `window.swarmy` through `contextBridge` and keeps the latest status so the bar does not miss a message that arrived before React subscribed.
+- The engine entry is `src/engine`. It speaks that protocol over the utility-process `MessagePort` and does not import Electron. Tests call `attachEngine` with a fake port. Main forks the built `engine.js` with `utilityProcess.fork`.
+- Dev-only crash, unpackaged builds only: Ctrl+Shift+F9, or Alt → Dev → Crash engine. `npm run dev` prints the shortcut. There is no public crash button. A local check of that menu item saw `Engine reconnecting`, then `Engine connected`, without restarting the app.
+- `npm run verify` exited 0 (typecheck, lint, unit, Playwright). Playwright checks that the status becomes `Engine connected`.
+- Added `zod` in this phase, the first one that imports it.
+- No deviations that change a later phase.
 
 ---
 

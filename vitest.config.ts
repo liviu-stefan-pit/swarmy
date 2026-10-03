@@ -8,6 +8,9 @@ export default defineConfig({
   test: {
     projects: [
       {
+        resolve: {
+          alias: { "@shared": shared },
+        },
         test: {
           name: "node",
           environment: "node",
