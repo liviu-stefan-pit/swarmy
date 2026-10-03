@@ -3,6 +3,7 @@ import { appInfo } from "@shared/app-info";
 import type { EngineStatus } from "@shared/protocol";
 import type { ConnectionInfo, HelloInfo } from "@shared/settings";
 import { SettingsForm } from "./SettingsForm";
+import { WorkflowEditor } from "./WorkflowCanvas";
 
 function engineStatusLabel(status: EngineStatus): string {
   switch (status) {
@@ -76,11 +77,14 @@ export function App() {
   }
 
   return (
-    <main className="flex min-h-screen flex-col bg-zinc-950 font-sans text-zinc-50">
-      <div className="flex flex-1 flex-col gap-8 px-6 py-8">
-        <h1 className="text-3xl font-semibold tracking-tight">{name}</h1>
-        <section className="max-w-xl space-y-4">
-          <h2 className="text-lg font-medium">Cursor connection</h2>
+    <main className="flex h-screen flex-col overflow-hidden bg-zinc-950 font-sans text-zinc-50">
+      <header className="flex items-center border-b border-zinc-800 px-4 py-2">
+        <h1 className="text-lg font-semibold tracking-tight">{name}</h1>
+      </header>
+      <WorkflowEditor />
+      <details className="border-t border-zinc-800 px-4 py-2">
+        <summary className="cursor-pointer text-sm text-zinc-300">Cursor connection</summary>
+        <section className="max-w-xl space-y-4 py-3">
           <SettingsForm
             workflow={workflow}
             onWorkflowChange={setWorkflow}
@@ -144,7 +148,7 @@ export function App() {
             </p>
           ) : null}
         </section>
-      </div>
+      </details>
       <footer
         className="border-t border-zinc-800 px-4 py-2 text-sm text-zinc-300"
         data-testid="engine-status"

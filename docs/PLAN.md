@@ -24,7 +24,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 2 | Typed IPC and engine process | [x] | phase-02 | 2026-10-03 |
 | 3 | Cursor connection and SDK spike | [x] | phase-03 | 2026-10-03 |
 | 4 | Workflow model and validation | [x] | phase-04 | 2026-10-03 |
-| 5 | Canvas editor | [ ] | | |
+| 5 | Canvas editor | [x] | phase-05 | 2026-10-03 |
 | 6 | Node inspector and agent config | [ ] | | |
 | 7 | Workflow persistence | [ ] | | |
 | 8 | Agent runtime and single run | [ ] | | |
@@ -237,6 +237,16 @@ A valid graph yields parallel tiers: each node sits in the tier after its latest
 
 Why: the canvas and the engine share one document. Phase 5 refuses a `diff` output wired to a `file` input, and later phases must not invent a second handle vocabulary.
 
+### D13 — Node docs stay next to the code
+
+Date: 2026-10-03. Status: accepted.
+
+What a node is for, how to use it on the canvas, and which handles connect live in [docs/nodes](nodes). `README.md` there is the index. `handles.md` is the connection schema. Each node type has its own page. The format is markdown so a phase agent updates it in the same change as the registry. Do not add an HTML doc site.
+
+A phase that adds a node type, changes a handle, or changes what the user can do with a node updates those pages before the phase is finished. That update is in scope even when the phase section does not repeat it. Write only what that phase ships. Behavior that belongs to a later phase stays marked with that phase number.
+
+Why: the canvas is usable before the swarm runs, and the handle rules are easy to forget. The user asked for docs they can look at, including schemas, and for the plan to keep them current.
+
 ## Conventions
 
 - Language: TypeScript, `strict`, no `any`. Validate every IPC payload and every workflow file with zod.
@@ -248,6 +258,7 @@ Why: the canvas and the engine share one document. Phase 5 refuses a `diff` outp
 - Shell is PowerShell. Do not add bash-only scripts. Git hooks and guard scripts that run on the user's machine are PowerShell.
 - Do not edit `docs/research/**`.
 - Do not add dependencies "for later". Add a dependency in the phase that first imports it.
+- Node docs live in `docs/nodes/` (decision D13). Update the index, `handles.md`, and the node page when a phase adds a type, changes a handle, or changes what the user can do with a node.
 
 ## Risks
 
@@ -548,7 +559,11 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- The window is a canvas. `@xyflow/react` draws a dotted background, a 16px snap grid, a minimap, and zoom controls. The palette lists every registered node type. Dropping one adds that node at the cursor. Agent nodes show their label and an `idle` status pill. Selecting a node sets `data-testid="selected-node"`.
+- The Zustand store holds the workflow document. A new edge is checked with `connectError`, which runs the Phase 4 validator. A mismatched connection is not added, and the validator's reason is shown on the canvas.
+- Added `@xyflow/react` and `zustand` in this phase, the first one that imports them. Cursor connection stays under a disclosure so the graph can use the window. Backspace does not delete nodes; deletion is not in this phase.
+- Node guide is [docs/nodes](nodes): an index, the handle schema, and one page per type. Decision D13 says later phases keep those pages current. Phase 6's add-node-type skill now includes that page.
+- No other deviations that change a later phase.
 
 ---
 
@@ -563,7 +578,7 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 - Inspector panel bound to the selected node.
 - Agent fields: label, model id (text; the live catalog arrives later), system prompt, task prompt, template variables (`{{name}}` tokens listed, not yet filled from upstream), `tools` allow list, `disallowedTools`, workspace mode (`repo` | `managed` | `folder`).
 - Edits update the Zustand document and pass the Phase 4 schema.
-- Write `.cursor/skills/add-node-type/SKILL.md` describing how to register a type: schema, handles, palette card, inspector section, and a test.
+- Write `.cursor/skills/add-node-type/SKILL.md` describing how to register a type: schema, handles, palette card, inspector section, a test, and a page under `docs/nodes/` (decision D13).
 
 **Out of scope.** Executing the config. Fetching `Cursor.models.list()` into the dropdown (Phase 3 already lists models in settings; a dropdown can wait until Phase 8 if it is not trivial).
 

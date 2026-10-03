@@ -17,6 +17,7 @@ description: >-
    - Fill **Completion notes**: what landed, deviations and the Decision id, follow-ups, and the outcomes the phase asked you to record (for example the SQLite spike).
    - If a later phase's prompt or scope is now wrong because of a deviation, edit that section and say why in the notes.
    - Mark **User Notes** you fully addressed as `done`, with one line on what changed.
+   - If this phase added a node type, changed a handle, or changed what the user can do with a node, update `docs/nodes/` (decision D13): the index, `handles.md`, and that node's page.
 3. Reply with the phase's **Manual test** steps, copied from the plan, and stop. Do not commit.
 
 ## When the user says the manual test failed

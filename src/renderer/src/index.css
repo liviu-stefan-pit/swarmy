@@ -1,1 +1,13 @@
 @import "tailwindcss";
+@import "@xyflow/react/dist/style.css";
+
+.react-flow__edges svg,
+.react-flow__edgelabel-renderer svg,
+.react-flow__connectionline svg {
+  display: unset;
+}
+
+.react-flow {
+  --xy-background-color: #09090b;
+  background-color: #09090b;
+}

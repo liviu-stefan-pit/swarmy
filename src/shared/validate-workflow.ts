@@ -2,6 +2,13 @@ import { ZodError } from "zod";
 import { getNodeType } from "./node-registry";
 import { workflowSchema, type Workflow } from "./workflow";
 
+export type WorkflowConnection = {
+  source: string;
+  sourceHandle: string;
+  target: string;
+  targetHandle: string;
+};
+
 export class WorkflowValidationError extends Error {
   readonly errors: readonly string[];
 
@@ -39,6 +46,29 @@ export function validateWorkflow(input: unknown): ValidatedWorkflow {
   }
 
   return { workflow, tiers: parallelTiers(workflow) };
+}
+
+export function connectError(workflow: Workflow, connection: WorkflowConnection): string | undefined {
+  const taken = new Set(workflow.edges.map((edge) => edge.id));
+  let draft = workflow.edges.length + 1;
+  let id = `draft-${draft}`;
+  while (taken.has(id)) {
+    draft += 1;
+    id = `draft-${draft}`;
+  }
+
+  try {
+    validateWorkflow({
+      ...workflow,
+      edges: [...workflow.edges, { id, ...connection }],
+    });
+    return undefined;
+  } catch (error) {
+    if (error instanceof WorkflowValidationError) {
+      return error.message;
+    }
+    throw error;
+  }
 }
 
 function schemaErrors(error: ZodError): string[] {

@@ -61,3 +61,5 @@ Keep it short:
 Write the tests listed in the phase. Run them. Paste the failure. Then implement until they pass. Follow `.cursor/rules/01-tdd.mdc`.
 
 Stay inside the phase's **Out of scope**. If you must deviate, append a Decision to `docs/PLAN.md` before writing the code.
+
+Updating `docs/nodes/` is in scope when this phase adds a node type, changes a handle, or changes what the user can do with a node (decision D13). Write only what this phase ships.

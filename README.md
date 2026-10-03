@@ -10,6 +10,8 @@ Implementation is split into small phases. Each phase is one fresh Cursor chat, 
 
 The living plan is [docs/PLAN.md](docs/PLAN.md). That file is the source of truth: what we are building, why earlier decisions were made, what each phase must deliver, and what changed along the way. Phase agents read it first and update it last.
 
+What each canvas node is for, which handles can connect, and the workflow JSON shape: [docs/nodes/README.md](docs/nodes/README.md).
+
 ### Start the next phase
 
 1. Open [docs/PLAN.md](docs/PLAN.md) and find the first phase whose status is `[ ]`.
