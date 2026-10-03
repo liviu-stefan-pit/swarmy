@@ -27,7 +27,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 5 | Canvas editor | [x] | phase-05 | 2026-10-03 |
 | 6 | Node inspector and agent config | [x] | phase-06 | 2026-10-03 |
 | 7 | Workflow persistence | [x] | phase-07 | 2026-10-03 |
-| 8 | Agent runtime and single run | [ ] | | |
+| 8 | Agent runtime and single run | [x] | phase-08 | 2026-10-03 |
 | 9 | Workspaces | [ ] | | |
 | 10 | LangGraph orchestrator | [ ] | | |
 | 11 | Run control, steering, resume | [ ] | | |
@@ -711,7 +711,13 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- One agent can run from its card. **Run** and **Cancel** sit on the agent node. The log panel is `data-testid="run-log"`. The status pill reads `idle`, `running`, `completed`, `failed`, or `cancelled`. The renderer never imports `@cursor/sdk`. It sends a typed run message; the engine calls `AgentRuntime`.
+- `AgentRuntime` now has `create`, and the agent it returns has `send`, `stream`, `wait`, `cancel`, `steer`, and `dispose`. Stream events are Swarmy types (`assistant`, `tool`, `warning`). `CursorSdkRuntime` maps `SDKMessage` into those types. `src/shared` does not import the SDK.
+- `FakeRuntime` is scripted per prompt. `SWARMY_RUNTIME=fake` replies with `fake-agent-reply` for any prompt. Automated tests use that runtime and do not call the network.
+- `CursorSdkRuntime` follows D9: explicit `local.cwd` in a temp directory, `settingSources: []`, stream then `wait`, dispose, `run.supports("cancel")` before cancel, and `steer` returning `complete_delivered` or `revert_to_followup`. A thrown SDK error is a startup failure (`Run did not start`). `result.status === "error"` is a run failure and the log shows that message. If `systemPrompt` is rejected, the runtime disposes that agent and retries once with the instructions prefixed to the prompt, same as the Phase 3 hello path.
+- The run does not create a worktree. Phase 9 still replaces this temp directory with the node's workspace. The model field stays plain text. An empty model id uses the same pick as hello (`composer-2.5`, or the first listed model). No later phase prompt changed.
+- Node docs updated (decision D13): `docs/nodes/agent.md`, the index, and `handles.md`. Run status is not stored in the workflow file.
+- `npm run verify` exited 0. No decision was added.
 
 ---
 

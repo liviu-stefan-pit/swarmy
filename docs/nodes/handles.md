@@ -94,7 +94,7 @@ A workflow is one JSON object. Every node stores a `label`. An agent also stores
 | `nodes[].type` | A type from the table above |
 | `nodes[].position` | `x` and `y` numbers, in canvas coordinates |
 | `nodes[].data.label` | Non-empty string shown on the card |
-| `nodes[].data` on an agent | Optional `modelId`, `systemPrompt`, `taskPrompt`, `tools`, `disallowedTools`, and `workspaceMode` (`repo`, `managed`, or `folder`) |
+| `nodes[].data` on an agent | Optional `modelId`, `systemPrompt`, `taskPrompt`, `tools`, `disallowedTools`, and `workspaceMode` (`repo`, `managed`, or `folder`). Run status is not stored here |
 | `edges[].id` | Unique, non-empty |
 | `edges[].source`, `target` | Node ids that exist |
 | `edges[].sourceHandle` | An output id of the source node |

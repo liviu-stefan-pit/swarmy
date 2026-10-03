@@ -2,7 +2,7 @@
 
 This is the guide to the canvas: what each node is for, how to wire it, and the JSON shape of a workflow. The connection rules are in [handles.md](handles.md). Each node has its own page.
 
-These pages match the app as of Phase 6. You can build a graph and configure an agent. Running it comes in later phases. A page says which phase adds the behavior that is still ahead.
+These pages match the app as of Phase 8. You can build a graph, configure an agent, and run that one agent. A page says which phase adds the behavior that is still ahead.
 
 | Node | Page | Takes | Produces |
 | --- | --- | --- | --- |
@@ -25,7 +25,7 @@ These pages match the app as of Phase 6. You can build a graph and configure an 
 6. The first node of a type is labeled with the type name (`Text`, `Agent`). The next one is `Text 2`, `Agent 2`, and so on.
 7. The API key UI is the **Cursor connection** disclosure under the canvas.
 
-Agent cards show a status pill. In this phase the pill always reads `idle`.
+Agent cards show a status pill (`idle`, `running`, `completed`, `failed`, or `cancelled`), plus **Run** and **Cancel**. The run log under the canvas shows that agent's reply. The pill and the log are not stored in the workflow file.
 
 ## A small graph
 

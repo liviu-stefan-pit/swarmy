@@ -73,6 +73,17 @@ const swarmy: SwarmyApi = {
       return Promise.resolve();
     },
   },
+  runs: {
+    start() {
+      return Promise.resolve({ nodeId: "agent-1", status: "completed", log: "" });
+    },
+    cancel() {
+      return Promise.resolve();
+    },
+    onUpdate() {
+      return () => undefined;
+    },
+  },
 };
 
 window.swarmy = swarmy;

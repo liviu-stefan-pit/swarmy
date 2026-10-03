@@ -15,12 +15,15 @@ import {
   type EngineMessage,
   type EngineStatus,
 } from "@shared/protocol";
+import { runUpdateChannel, runUpdateSchema } from "@shared/runs";
 import { ReconnectCounter } from "./reconnect-counter";
 
 const RESTART_DELAY_MS = 1000;
 const TEST_TIMEOUT_MS = 30_000;
 const HELLO_TIMEOUT_MS = 180_000;
 const WORKFLOW_TIMEOUT_MS = 10_000;
+const RUN_TIMEOUT_MS = 30 * 60 * 1000;
+const CANCEL_TIMEOUT_MS = 30_000;
 
 const resultByRequest = {
   "cursor.test": "cursor.testResult",
@@ -29,12 +32,14 @@ const resultByRequest = {
   "workflow.load": "workflow.loadResult",
   "workflow.list": "workflow.listResult",
   "workflow.delete": "workflow.deleteResult",
+  "run.start": "run.done",
+  "run.cancel": "run.cancelResult",
 } as const;
 
 type EngineRequestType = keyof typeof resultByRequest;
 type EngineRequest = Extract<EngineMessage, { type: EngineRequestType }>;
 type EngineSuccess = Extract<EngineMessage, { type: (typeof resultByRequest)[EngineRequestType] }>;
-type EngineFailure = Extract<EngineMessage, { type: "cursor.failed" | "workflow.failed" }>;
+type EngineFailure = Extract<EngineMessage, { type: "cursor.failed" | "workflow.failed" | "run.failed" }>;
 
 export interface EngineHost {
   bindWindow(window: BrowserWindow): void;
@@ -93,6 +98,10 @@ export function startEngineHost(): EngineHost {
         }
         if (parsed.type === "sqlite.probeResult") {
           logSqliteProbe(parsed);
+          return;
+        }
+        if (parsed.type === "run.update") {
+          broadcastRunUpdate(parsed);
           return;
         }
         if (isEngineReply(parsed)) {
@@ -193,7 +202,7 @@ function settle(pending: Map<string, Waiter>, message: EngineSuccess | EngineFai
   }
   pending.delete(message.id);
   clearTimeout(waiter.timer);
-  if (message.type === "cursor.failed" || message.type === "workflow.failed") {
+  if (message.type === "cursor.failed" || message.type === "workflow.failed" || message.type === "run.failed") {
     waiter.reject(new Error(message.message));
     return;
   }
@@ -213,7 +222,10 @@ function isEngineReply(message: EngineMessage): message is EngineSuccess | Engin
     message.type === "workflow.loadResult" ||
     message.type === "workflow.listResult" ||
     message.type === "workflow.deleteResult" ||
-    message.type === "workflow.failed"
+    message.type === "workflow.failed" ||
+    message.type === "run.done" ||
+    message.type === "run.cancelResult" ||
+    message.type === "run.failed"
   );
 }
 
@@ -223,11 +235,28 @@ function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessag
       return { timeoutMs: HELLO_TIMEOUT_MS, timeoutMessage: "Hello run timed out" };
     case "cursor.test":
       return { timeoutMs: TEST_TIMEOUT_MS, timeoutMessage: "Test connection timed out" };
+    case "run.start":
+      return { timeoutMs: RUN_TIMEOUT_MS, timeoutMessage: "Agent run timed out" };
+    case "run.cancel":
+      return { timeoutMs: CANCEL_TIMEOUT_MS, timeoutMessage: "Cancel timed out" };
     case "workflow.delete":
     case "workflow.list":
     case "workflow.load":
     case "workflow.save":
       return { timeoutMs: WORKFLOW_TIMEOUT_MS, timeoutMessage: "Workflow request timed out" };
+  }
+}
+
+function broadcastRunUpdate(message: Extract<EngineMessage, { type: "run.update" }>): void {
+  const update = runUpdateSchema.parse({
+    nodeId: message.nodeId,
+    status: message.status,
+    log: message.log,
+  });
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send(runUpdateChannel, update);
+    }
   }
 }
 

@@ -2,6 +2,7 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseEngineMessage, type EngineMessage } from "@shared/protocol";
+import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
@@ -26,6 +27,10 @@ export function attachEngine(port: EnginePort, runtime?: AgentRuntime): void {
     return workflows;
   };
 
+  const activeRuns = new Map<string, AgentRunSession>();
+  const starting = new Set<string>();
+  const pendingCancels = new Set<string>();
+
   port.onMessage((input: unknown) => {
     const message = readMessage(input);
     if (!message) {
@@ -49,6 +54,16 @@ export function attachEngine(port: EnginePort, runtime?: AgentRuntime): void {
 
     if (message.type === "cursor.hello") {
       void answerHello(port, getRuntime(), message);
+      return;
+    }
+
+    if (message.type === "run.start") {
+      void answerRun(port, getRuntime(), message, activeRuns, starting, pendingCancels);
+      return;
+    }
+
+    if (message.type === "run.cancel") {
+      void answerCancel(port, message, activeRuns, starting, pendingCancels);
       return;
     }
 
@@ -102,6 +117,99 @@ async function answerHello(
     });
   } catch (error) {
     postFailure(port, message.id, error, message.apiKey);
+  }
+}
+
+async function answerRun(
+  port: EnginePort,
+  runtimePromise: Promise<AgentRuntime>,
+  message: Extract<EngineMessage, { type: "run.start" }>,
+  activeRuns: Map<string, AgentRunSession>,
+  starting: Set<string>,
+  pendingCancels: Set<string>,
+): Promise<void> {
+  if (activeRuns.size > 0) {
+    port.postMessage({
+      type: "run.done",
+      id: message.id,
+      nodeId: message.nodeId,
+      status: "failed",
+      log: scrub("Another agent is already running.", message.apiKey),
+    });
+    return;
+  }
+
+  starting.add(message.nodeId);
+  try {
+    const runtime = await runtimePromise;
+    const cwd = await mkdtemp(join(tmpdir(), "swarmy-run-"));
+    const session = startAgentRun({
+      runtime,
+      request: {
+        apiKey: message.apiKey,
+        cwd,
+        prompt: message.prompt,
+        ...(message.modelId ? { modelId: message.modelId } : {}),
+        ...(message.systemPrompt !== undefined ? { systemPrompt: message.systemPrompt } : {}),
+        ...(message.tools !== undefined ? { tools: message.tools } : {}),
+        ...(message.disallowedTools !== undefined ? { disallowedTools: message.disallowedTools } : {}),
+      },
+      onUpdate(update) {
+        port.postMessage({
+          type: "run.update",
+          nodeId: message.nodeId,
+          status: update.status,
+          log: scrub(update.log, message.apiKey),
+        });
+      },
+    });
+    activeRuns.set(message.nodeId, session);
+    starting.delete(message.nodeId);
+    if (pendingCancels.delete(message.nodeId)) {
+      await session.cancel();
+    }
+    const outcome = await session.done;
+    port.postMessage({
+      type: "run.done",
+      id: message.id,
+      nodeId: message.nodeId,
+      status: outcome.status,
+      log: scrub(outcome.log, message.apiKey),
+    });
+  } catch (error) {
+    const text = scrub(error instanceof Error && error.message ? error.message : "The run failed", message.apiKey);
+    port.postMessage({
+      type: "run.done",
+      id: message.id,
+      nodeId: message.nodeId,
+      status: "failed",
+      log: text.length > 0 ? text : "The run failed",
+    });
+  } finally {
+    starting.delete(message.nodeId);
+    activeRuns.delete(message.nodeId);
+    pendingCancels.delete(message.nodeId);
+  }
+}
+
+async function answerCancel(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.cancel" }>,
+  activeRuns: Map<string, AgentRunSession>,
+  starting: Set<string>,
+  pendingCancels: Set<string>,
+): Promise<void> {
+  const session = activeRuns.get(message.nodeId);
+  try {
+    if (session) {
+      await session.cancel();
+    } else if (starting.has(message.nodeId)) {
+      pendingCancels.add(message.nodeId);
+    }
+    port.postMessage({ type: "run.cancelResult", id: message.id });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Cancel failed";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
   }
 }
 

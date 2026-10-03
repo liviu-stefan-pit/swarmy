@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { join } from "node:path";
 import { appInfo } from "@shared/app-info";
 import { startEngineHost, type EngineHost } from "./engine-host";
+import { registerRunIpc } from "./run-ipc";
 import { registerSettingsIpc } from "./settings-ipc";
 import { registerWorkflowIpc } from "./workflow-ipc";
 
@@ -41,6 +42,7 @@ void app.whenReady().then(() => {
   const engine = startEngineHost();
   registerSettingsIpc(engine);
   registerWorkflowIpc(engine);
+  registerRunIpc(engine);
   openWindow(engine);
 
   app.on("activate", () => {

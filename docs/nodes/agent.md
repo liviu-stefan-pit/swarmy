@@ -6,7 +6,9 @@ An Agent is a Cursor agent. It is the worker in the swarm. It can read text, a f
 
 ## On the canvas
 
-Drag **Agent** onto the canvas. The card shows the label and a status pill. The pill reads `idle` until a later phase runs the node.
+Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**, and **Cancel**. The pill reads `idle` until you run the node. A run moves it through `running`, then `completed`, `failed`, or `cancelled`.
+
+**Run** sends that agent's task prompt to one Cursor agent. The reply streams into the **Run log** under the canvas. **Cancel** stops the run that is in progress. The run uses a temporary directory on this PC. It does not create a git worktree yet. Only one agent runs at a time. Steering text is not on the card yet.
 
 Select the card. The inspector on the right edits that agent only:
 
@@ -42,8 +44,7 @@ Several sources may share one input. A Text node and a Planner may both wire int
 
 | Phase | What arrives |
 | --- | --- |
-| 8 | Run one agent, watch its log, cancel it |
-| 9 | A workspace per run: repo, managed folder, or plain folder |
+| 9 | A workspace per run: repo, managed folder, or plain folder, instead of the temporary directory |
 | 10 | The whole graph runs, and this node's text and diff are the handoff |
 | 14 | Tool limits and a hook that blocks dangerous shell commands |
 

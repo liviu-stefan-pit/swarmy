@@ -1,7 +1,10 @@
-import type { CSSProperties } from "react";
+import type { CSSProperties, MouseEvent, PointerEvent } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { getNodeType } from "@shared/node-registry";
+import type { NodeRunStatus } from "@shared/runs";
 import type { HandleDataType } from "@shared/workflow";
+import { useRunStore } from "./run-store";
+import { useWorkflowStore } from "./workflow-store";
 
 const handleColor: Record<HandleDataType, string> = {
   text: "#38bdf8",
@@ -11,7 +14,15 @@ const handleColor: Record<HandleDataType, string> = {
   mcp: "#c4b5fd",
 };
 
-type FlowNodeData = { label: string };
+type FlowNodeData = { label: string; status?: NodeRunStatus; busy?: boolean };
+
+const statusClass: Record<NodeRunStatus, string> = {
+  idle: "bg-zinc-800 text-zinc-300",
+  running: "bg-sky-950 text-sky-200",
+  completed: "bg-emerald-950 text-emerald-200",
+  failed: "bg-red-950 text-red-200",
+  cancelled: "bg-amber-950 text-amber-200",
+};
 
 function handleStyle(type: HandleDataType): CSSProperties {
   return {
@@ -27,10 +38,11 @@ function handleStyle(type: HandleDataType): CSSProperties {
   };
 }
 
-export function WorkflowNodeCard({ type, data, selected }: NodeProps<Node<FlowNodeData>>) {
+export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<FlowNodeData>>) {
   const definition = getNodeType(type ?? "");
   const inputs = definition?.inputs ?? [];
   const outputs = definition?.outputs ?? [];
+  const status = data.status ?? "idle";
 
   return (
     <article
@@ -47,11 +59,8 @@ export function WorkflowNodeCard({ type, data, selected }: NodeProps<Node<FlowNo
       <header className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{data.label}</h3>
         {type === "agent" ? (
-          <span
-            data-testid="node-status"
-            className="rounded-full bg-zinc-800 px-2 py-0.5 text-xs text-zinc-300"
-          >
-            idle
+          <span data-testid="node-status" className={`rounded-full px-2 py-0.5 text-xs ${statusClass[status]}`}>
+            {status}
           </span>
         ) : null}
       </header>
@@ -89,6 +98,41 @@ export function WorkflowNodeCard({ type, data, selected }: NodeProps<Node<FlowNo
               <span className="text-zinc-300">{handle.label}</span>
             </div>
           ))}
+        </div>
+      ) : null}
+      {type === "agent" ? (
+        <div className="nodrag nopan mt-2 flex gap-2">
+          <button
+            type="button"
+            data-testid="run-agent"
+            disabled={data.busy}
+            className="rounded border border-zinc-600 px-2 py-0.5 text-xs hover:bg-zinc-800 disabled:opacity-50"
+            onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+            }}
+            onClick={(event: MouseEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+              useWorkflowStore.getState().selectNode(id);
+              void useRunStore.getState().start(id);
+            }}
+          >
+            Run
+          </button>
+          <button
+            type="button"
+            data-testid="cancel-run"
+            disabled={status !== "running"}
+            className="rounded border border-zinc-600 px-2 py-0.5 text-xs hover:bg-zinc-800 disabled:opacity-50"
+            onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+            }}
+            onClick={(event: MouseEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+              void useRunStore.getState().cancel();
+            }}
+          >
+            Cancel
+          </button>
         </div>
       ) : null}
     </article>

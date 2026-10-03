@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { runUpdateSchema } from "./runs";
 import { workflowSchema } from "./workflow";
 import { workflowSummarySchema } from "./workflows";
 
@@ -113,6 +114,47 @@ export const workflowFailedMessageSchema = z.object({
   message: z.string().min(1),
 });
 
+export const runStartMessageSchema = z.object({
+  type: z.literal("run.start"),
+  id: z.string().min(1),
+  nodeId: z.string().min(1),
+  apiKey: z.string().min(1),
+  prompt: z.string(),
+  modelId: z.string().min(1).optional(),
+  systemPrompt: z.string().optional(),
+  tools: z.array(z.string()).optional(),
+  disallowedTools: z.array(z.string()).optional(),
+});
+
+export const runUpdateMessageSchema = runUpdateSchema.extend({
+  type: z.literal("run.update"),
+});
+
+export const runDoneMessageSchema = z.object({
+  type: z.literal("run.done"),
+  id: z.string().min(1),
+  nodeId: z.string().min(1),
+  status: z.enum(["completed", "failed", "cancelled"]),
+  log: z.string(),
+});
+
+export const runCancelMessageSchema = z.object({
+  type: z.literal("run.cancel"),
+  id: z.string().min(1),
+  nodeId: z.string().min(1),
+});
+
+export const runCancelResultMessageSchema = z.object({
+  type: z.literal("run.cancelResult"),
+  id: z.string().min(1),
+});
+
+export const runFailedMessageSchema = z.object({
+  type: z.literal("run.failed"),
+  id: z.string().min(1),
+  message: z.string().min(1),
+});
+
 export const engineMessageSchema = z.discriminatedUnion("type", [
   engineHelloMessageSchema,
   engineReadyMessageSchema,
@@ -133,6 +175,12 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   workflowDeleteMessageSchema,
   workflowDeleteResultMessageSchema,
   workflowFailedMessageSchema,
+  runStartMessageSchema,
+  runUpdateMessageSchema,
+  runDoneMessageSchema,
+  runCancelMessageSchema,
+  runCancelResultMessageSchema,
+  runFailedMessageSchema,
 ]);
 
 export type EngineMessage = z.infer<typeof engineMessageSchema>;

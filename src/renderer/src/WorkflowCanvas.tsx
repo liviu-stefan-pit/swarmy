@@ -15,8 +15,10 @@ import {
   type NodeTypes,
 } from "@xyflow/react";
 import { getNodeType, nodeTypes } from "@shared/node-registry";
+import type { NodeRunStatus } from "@shared/runs";
 import { NodeInspector } from "./NodeInspector";
 import { Palette } from "./Palette";
+import { useRunStore } from "./run-store";
 import { WorkflowEdge } from "./WorkflowEdge";
 import { WorkflowLibrary } from "./WorkflowLibrary";
 import { WorkflowNodeCard } from "./WorkflowNodeCard";
@@ -46,6 +48,8 @@ function FlowSurface() {
   const nodes = useWorkflowStore((state) => state.workflow.nodes);
   const edges = useWorkflowStore((state) => state.workflow.edges);
   const selectedNodeId = useWorkflowStore((state) => state.selectedNodeId);
+  const statusByNode = useRunStore((state) => state.statusByNode);
+  const runBusy = useRunStore((state) => state.activeNodeId !== null);
   const connectionError = useWorkflowStore((state) => state.connectionError);
   const addNode = useWorkflowStore((state) => state.addNode);
   const connect = useWorkflowStore((state) => state.connect);
@@ -54,16 +58,20 @@ function FlowSurface() {
   const setViewport = useWorkflowStore((state) => state.setViewport);
   const initialViewport = useMemo(() => useWorkflowStore.getState().workflow.viewport, []);
 
-  const flowNodes = useMemo<Node<{ label: string }>[]>(
+  const flowNodes = useMemo<Node<{ label: string; status: NodeRunStatus; busy: boolean }>[]>(
     () =>
       nodes.map((node) => ({
         id: node.id,
         type: node.type,
         position: node.position,
-        data: node.data,
+        data: {
+          label: node.data.label,
+          status: statusByNode[node.id] ?? "idle",
+          busy: runBusy,
+        },
         selected: node.id === selectedNodeId,
       })),
-    [nodes, selectedNodeId],
+    [nodes, runBusy, selectedNodeId, statusByNode],
   );
 
   const flowEdges = useMemo<Edge[]>(

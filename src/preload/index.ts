@@ -1,6 +1,15 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import { engineStatusChannel, engineStatusSchema, type EngineStatus } from "@shared/protocol";
 import {
+  runCancelChannel,
+  runCancelPayloadSchema,
+  runStartChannel,
+  runStartPayloadSchema,
+  runUpdateChannel,
+  runUpdateSchema,
+  type RunUpdate,
+} from "@shared/runs";
+import {
   connectionInfoSchema,
   hasKeyChannel,
   helloChannel,
@@ -23,6 +32,7 @@ import {
 import { z } from "zod";
 
 const listeners = new Set<(status: EngineStatus) => void>();
+const runListeners = new Set<(update: RunUpdate) => void>();
 let latest: EngineStatus = "reconnecting";
 
 function publish(status: EngineStatus): void {
@@ -38,6 +48,16 @@ ipcRenderer.on(engineStatusChannel, (_event: IpcRendererEvent, payload: unknown)
     return;
   }
   publish(parsed.data);
+});
+
+ipcRenderer.on(runUpdateChannel, (_event: IpcRendererEvent, payload: unknown) => {
+  const parsed = runUpdateSchema.safeParse(payload);
+  if (!parsed.success) {
+    return;
+  }
+  for (const listener of runListeners) {
+    listener(parsed.data);
+  }
 });
 
 const swarmy: SwarmyApi = {
@@ -83,6 +103,22 @@ const swarmy: SwarmyApi = {
     async delete(id) {
       const parsed = workflowIdPayloadSchema.parse({ id });
       await ipcRenderer.invoke(workflowDeleteChannel, parsed);
+    },
+  },
+  runs: {
+    async start(input) {
+      const parsed = runStartPayloadSchema.parse(input);
+      return runUpdateSchema.parse(await ipcRenderer.invoke(runStartChannel, parsed));
+    },
+    async cancel(nodeId) {
+      const parsed = runCancelPayloadSchema.parse({ nodeId });
+      await ipcRenderer.invoke(runCancelChannel, parsed);
+    },
+    onUpdate(listener) {
+      runListeners.add(listener);
+      return () => {
+        runListeners.delete(listener);
+      };
     },
   },
 };
