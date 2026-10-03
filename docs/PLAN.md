@@ -23,7 +23,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 1 | Scaffold and test harness | [x] | phase-01 | 2026-10-03 |
 | 2 | Typed IPC and engine process | [x] | phase-02 | 2026-10-03 |
 | 3 | Cursor connection and SDK spike | [x] | phase-03 | 2026-10-03 |
-| 4 | Workflow model and validation | [ ] | | |
+| 4 | Workflow model and validation | [x] | phase-04 | 2026-10-03 |
 | 5 | Canvas editor | [ ] | | |
 | 6 | Node inspector and agent config | [ ] | | |
 | 7 | Workflow persistence | [ ] | | |
@@ -217,6 +217,25 @@ Date: 2026-10-03. Status: accepted.
 Each phase is a new chat. The agent writes the tests named in the phase, runs them, and shows the failure before writing production code. It does not start the next phase. It does not commit until the user confirms the manual test.
 
 Why: the user will run out of context in a long chat, and wants each phase to be testable.
+
+### D12 — Workflow handle data types
+
+Date: 2026-10-03. Status: accepted.
+
+An edge is valid only when its output handle and input handle carry the same data type. The types are `text`, `file`, `folder`, `diff`, and `mcp`. Phase 4 registers these handles:
+
+- `textInput`: out `text`
+- `fileInput`: out `file`
+- `folderInput`: out `folder`
+- `mcp`: out `mcp`
+- `agent`: in `text`, `file`, `folder`, `mcp`; out `text`, `diff`
+- `planner`: in `text`; out `text`
+- `approval`: in `diff`; out `diff`
+- `merge`: in `text`, `diff`; out `text`, `diff`
+
+A valid graph yields parallel tiers: each node sits in the tier after its latest dependency. Nodes in one tier do not depend on each other. A cycle error names the nodes on the cycle path.
+
+Why: the canvas and the engine share one document. Phase 5 refuses a `diff` output wired to a `file` input, and later phases must not invent a second handle vocabulary.
 
 ## Conventions
 
@@ -479,7 +498,11 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A workflow document lives in `src/shared`: zod schemas for the workflow, node, edge, handle, position, and viewport. Node `data` is `{ label }` only. Phase 6 adds agent fields to `workflowNodeSchema`.
+- The registry lists `agent`, `approval`, `fileInput`, `folderInput`, `textInput`, `mcp`, `planner`, and `merge`, with the handles in decision D12. Validation reports an unknown type, a dangling edge (missing node or handle), a handle type mismatch, and a duplicate id. A cycle names every node on the path (`Cycle: alpha → beta → alpha`). An acyclic graph returns parallel tiers.
+- `examples/valid-line.json` is a diamond, which is what this phase's tier test asks for: `brief`, then `writer` and `reviewer` together, then `combine`. `examples/cycle.json` and `examples/bad-handle.json` fail.
+- `npm run validate-workflow -- <file>` prints `ok` or the errors. Node runs the TypeScript CLI directly, so this phase adds no dependency.
+- No deviations that change a later phase.
 
 ---
 

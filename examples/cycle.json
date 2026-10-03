@@ -1,0 +1,35 @@
+{
+  "id": "cycle",
+  "name": "Cycle: Alpha and Beta each depend on the other",
+  "viewport": { "x": 0, "y": 0, "zoom": 1 },
+  "nodes": [
+    {
+      "id": "alpha",
+      "type": "agent",
+      "position": { "x": 0, "y": 0 },
+      "data": { "label": "Alpha" }
+    },
+    {
+      "id": "beta",
+      "type": "agent",
+      "position": { "x": 280, "y": 0 },
+      "data": { "label": "Beta" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "alpha-to-beta",
+      "source": "alpha",
+      "sourceHandle": "text",
+      "target": "beta",
+      "targetHandle": "text"
+    },
+    {
+      "id": "beta-to-alpha",
+      "source": "beta",
+      "sourceHandle": "text",
+      "target": "alpha",
+      "targetHandle": "text"
+    }
+  ]
+}

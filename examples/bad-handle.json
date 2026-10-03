@@ -1,0 +1,28 @@
+{
+  "id": "bad-handle",
+  "name": "Bad handle: a diff output wired into a file input",
+  "viewport": { "x": 0, "y": 0, "zoom": 1 },
+  "nodes": [
+    {
+      "id": "writer",
+      "type": "agent",
+      "position": { "x": 0, "y": 0 },
+      "data": { "label": "Writer" }
+    },
+    {
+      "id": "reader",
+      "type": "agent",
+      "position": { "x": 280, "y": 0 },
+      "data": { "label": "Reader" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "diff-into-file",
+      "source": "writer",
+      "sourceHandle": "diff",
+      "target": "reader",
+      "targetHandle": "file"
+    }
+  ]
+}

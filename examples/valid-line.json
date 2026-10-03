@@ -1,0 +1,61 @@
+{
+  "id": "valid-line",
+  "name": "Diamond: one brief, two agents in parallel, then a merge",
+  "viewport": { "x": 0, "y": 0, "zoom": 1 },
+  "nodes": [
+    {
+      "id": "brief",
+      "type": "textInput",
+      "position": { "x": 0, "y": 160 },
+      "data": { "label": "Brief" }
+    },
+    {
+      "id": "writer",
+      "type": "agent",
+      "position": { "x": 280, "y": 40 },
+      "data": { "label": "Writer" }
+    },
+    {
+      "id": "reviewer",
+      "type": "agent",
+      "position": { "x": 280, "y": 280 },
+      "data": { "label": "Reviewer" }
+    },
+    {
+      "id": "combine",
+      "type": "merge",
+      "position": { "x": 560, "y": 160 },
+      "data": { "label": "Combine" }
+    }
+  ],
+  "edges": [
+    {
+      "id": "brief-to-writer",
+      "source": "brief",
+      "sourceHandle": "text",
+      "target": "writer",
+      "targetHandle": "text"
+    },
+    {
+      "id": "brief-to-reviewer",
+      "source": "brief",
+      "sourceHandle": "text",
+      "target": "reviewer",
+      "targetHandle": "text"
+    },
+    {
+      "id": "writer-to-combine",
+      "source": "writer",
+      "sourceHandle": "text",
+      "target": "combine",
+      "targetHandle": "text"
+    },
+    {
+      "id": "reviewer-to-combine",
+      "source": "reviewer",
+      "sourceHandle": "text",
+      "target": "combine",
+      "targetHandle": "text"
+    }
+  ]
+}
