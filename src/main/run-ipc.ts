@@ -6,7 +6,10 @@ import {
   runStartChannel,
   runStartPayloadSchema,
   runUpdateSchema,
+  workflowRunChannel,
+  workflowRunResultSchema,
 } from "@shared/runs";
+import { workflowSchema } from "@shared/workflow";
 import type { EngineHost } from "./engine-host";
 import { readApiKey } from "./secret-store";
 
@@ -38,6 +41,25 @@ export function registerRunIpc(engine: EngineHost): void {
         log: result.log,
         ...(result.workspacePath ? { workspacePath: result.workspacePath } : {}),
       });
+    } catch (error) {
+      throw new Error(scrub(errorText(error), apiKey), { cause: error });
+    }
+  });
+
+  ipcMain.handle(workflowRunChannel, async (_event, payload: unknown) => {
+    const workflow = workflowSchema.parse(payload);
+    const apiKey = apiKeyForRun();
+    try {
+      const result = await engine.request({
+        type: "workflow.run",
+        id: randomUUID(),
+        workflow,
+        apiKey,
+      });
+      if (result.type !== "workflow.runDone") {
+        throw new Error("Unexpected engine response");
+      }
+      return workflowRunResultSchema.parse({ statuses: result.statuses });
     } catch (error) {
       throw new Error(scrub(errorText(error), apiKey), { cause: error });
     }

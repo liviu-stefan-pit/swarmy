@@ -7,6 +7,8 @@ import {
   runStartPayloadSchema,
   runUpdateChannel,
   runUpdateSchema,
+  workflowRunChannel,
+  workflowRunResultSchema,
   type RunUpdate,
 } from "@shared/runs";
 import {
@@ -109,6 +111,10 @@ const swarmy: SwarmyApi = {
     async start(input) {
       const parsed = runStartPayloadSchema.parse(input);
       return runUpdateSchema.parse(await ipcRenderer.invoke(runStartChannel, parsed));
+    },
+    async startWorkflow(workflow) {
+      const parsed = workflowSchema.parse(workflow);
+      return workflowRunResultSchema.parse(await ipcRenderer.invoke(workflowRunChannel, parsed));
     },
     async cancel(nodeId) {
       const parsed = runCancelPayloadSchema.parse({ nodeId });

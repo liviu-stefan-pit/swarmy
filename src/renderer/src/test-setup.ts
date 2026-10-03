@@ -77,6 +77,9 @@ const swarmy: SwarmyApi = {
     start() {
       return Promise.resolve({ nodeId: "agent-1", status: "completed", log: "" });
     },
+    startWorkflow() {
+      return Promise.resolve({ statuses: {} });
+    },
     cancel() {
       return Promise.resolve();
     },

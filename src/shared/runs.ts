@@ -1,11 +1,11 @@
 import { z } from "zod";
 import { workspaceModeSchema } from "./workflow";
 
-export const nodeRunStatusSchema = z.enum(["idle", "running", "completed", "failed", "cancelled"]);
+export const nodeRunStatusSchema = z.enum(["idle", "queued", "running", "completed", "failed", "cancelled"]);
 
 export const runUpdateSchema = z.object({
   nodeId: z.string().min(1),
-  status: z.enum(["running", "completed", "failed", "cancelled"]),
+  status: z.enum(["queued", "running", "completed", "failed", "cancelled"]),
   log: z.string(),
   workspacePath: z.string().min(1).optional(),
 });
@@ -26,11 +26,17 @@ export const runCancelPayloadSchema = z.object({
   nodeId: z.string().min(1),
 });
 
+export const workflowRunResultSchema = z.object({
+  statuses: z.record(z.string(), nodeRunStatusSchema),
+});
+
 export const runStartChannel = "run:start";
 export const runCancelChannel = "run:cancel";
 export const runUpdateChannel = "run:update";
+export const workflowRunChannel = "workflow:run";
 
 export type NodeRunStatus = z.infer<typeof nodeRunStatusSchema>;
 export type RunUpdate = z.infer<typeof runUpdateSchema>;
 export type RunStart = z.infer<typeof runStartPayloadSchema>;
 export type RunDone = RunUpdate;
+export type WorkflowRunResult = z.infer<typeof workflowRunResultSchema>;

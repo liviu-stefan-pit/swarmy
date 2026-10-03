@@ -29,6 +29,7 @@ export function workflowDataDir(env: NodeJS.ProcessEnv = process.env): string {
 export function openWorkflowDb(dataDir: string, options?: { now?: () => number }): WorkflowDb {
   mkdirSync(dataDir, { recursive: true });
   const db = openSqliteDatabase(join(dataDir, "swarmy.db"));
+  db.exec("PRAGMA journal_mode = WAL");
   db.exec(`
     CREATE TABLE IF NOT EXISTS workflows (
       id TEXT PRIMARY KEY,

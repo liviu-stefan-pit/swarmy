@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { workflowSchema, type Workflow } from "@shared/workflow";
 import type { WorkflowSummary } from "@shared/workflows";
+import { useRunStore } from "./run-store";
 import { useWorkflowStore } from "./workflow-store";
 
 const autosaveDelayMs = 400;
@@ -61,6 +62,23 @@ function upsertSummary(current: readonly WorkflowSummary[], summary: WorkflowSum
   next.push(summary);
   next.sort((a, b) => b.updatedAt - a.updatedAt || a.id.localeCompare(b.id));
   return next;
+}
+
+function RunWorkflowButton() {
+  const running = useRunStore((state) => state.workflowRunning || state.activeNodeId !== null);
+  return (
+    <button
+      type="button"
+      data-testid="run-workflow"
+      disabled={running}
+      className="rounded border border-sky-700 px-3 py-1.5 text-sm hover:bg-sky-950 disabled:opacity-50"
+      onClick={() => {
+        void useRunStore.getState().startWorkflow();
+      }}
+    >
+      Run
+    </button>
+  );
 }
 
 function errorText(error: unknown): string {
@@ -372,6 +390,7 @@ function WorkflowToolbar({
           ))}
         </select>
       </label>
+      <RunWorkflowButton />
       <button
         type="button"
         data-testid="workflow-delete"

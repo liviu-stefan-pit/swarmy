@@ -6,6 +6,8 @@ import { parseEngineMessage, type EngineMessage } from "@shared/protocol";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
+import { runWorkflow } from "./orchestrator";
+import { SqliteCheckpointer } from "./sqlite-checkpointer";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
 import { createWorkspaceManager, type AgentWorkspace, type WorkspaceManager } from "./workspace-manager";
 
@@ -41,6 +43,12 @@ export function attachEngine(
   const activeRuns = new Map<string, AgentRunSession>();
   const starting = new Set<string>();
   const pendingCancels = new Set<string>();
+  let graphRunning = false;
+  let checkpoints: SqliteCheckpointer | undefined;
+  const getCheckpointer = (): SqliteCheckpointer => {
+    checkpoints ??= SqliteCheckpointer.open(join(workflowDataDir(), "swarmy.db"));
+    return checkpoints;
+  };
 
   port.onMessage((input: unknown) => {
     const message = readMessage(input);
@@ -69,7 +77,24 @@ export function attachEngine(
     }
 
     if (message.type === "run.start") {
+      if (graphRunning) {
+        port.postMessage({
+          type: "run.done",
+          id: message.id,
+          nodeId: message.nodeId,
+          status: "failed",
+          log: "Another agent is already running.",
+        });
+        return;
+      }
       void answerRun(port, getRuntime(), getWorkspaces, message, activeRuns, starting, pendingCancels);
+      return;
+    }
+
+    if (message.type === "workflow.run") {
+      void answerWorkflowRun(port, getRuntime(), getWorkspaces, getCheckpointer, message, () => graphRunning || activeRuns.size > 0, (running) => {
+        graphRunning = running;
+      });
       return;
     }
 
@@ -216,6 +241,60 @@ async function answerRun(
     starting.delete(message.nodeId);
     activeRuns.delete(message.nodeId);
     pendingCancels.delete(message.nodeId);
+  }
+}
+
+async function answerWorkflowRun(
+  port: EnginePort,
+  runtimePromise: Promise<AgentRuntime>,
+  getWorkspaces: () => WorkspaceManager,
+  getCheckpointer: () => SqliteCheckpointer,
+  message: Extract<EngineMessage, { type: "workflow.run" }>,
+  isBusy: () => boolean,
+  setRunning: (running: boolean) => void,
+): Promise<void> {
+  if (isBusy()) {
+    port.postMessage({
+      type: "workflow.failed",
+      id: message.id,
+      message: "Another agent is already running.",
+    });
+    return;
+  }
+
+  setRunning(true);
+  try {
+    const runtime = await runtimePromise;
+    const result = await runWorkflow({
+      workflow: message.workflow,
+      runtime,
+      apiKey: message.apiKey,
+      workspaces: getWorkspaces(),
+      checkpointer: getCheckpointer(),
+      onUpdate(update) {
+        port.postMessage({
+          type: "run.update",
+          nodeId: update.nodeId,
+          status: update.status,
+          log: scrub(update.log, message.apiKey),
+          ...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
+        });
+      },
+    });
+    port.postMessage({
+      type: "workflow.runDone",
+      id: message.id,
+      statuses: result.statuses,
+    });
+  } catch (error) {
+    const text = scrub(error instanceof Error && error.message ? error.message : "The workflow run failed", message.apiKey);
+    port.postMessage({
+      type: "workflow.failed",
+      id: message.id,
+      message: text.length > 0 ? text : "The workflow run failed",
+    });
+  } finally {
+    setRunning(false);
   }
 }
 

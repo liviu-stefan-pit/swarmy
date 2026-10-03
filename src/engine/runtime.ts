@@ -48,6 +48,20 @@ export interface RuntimeAgent {
   dispose(): Promise<void>;
 }
 
+export type RuntimeJson =
+  | string
+  | number
+  | boolean
+  | null
+  | RuntimeJson[]
+  | { [key: string]: RuntimeJson };
+
+export interface RuntimeCustomTool {
+  description?: string;
+  inputSchema?: { [key: string]: RuntimeJson };
+  execute(args: Record<string, unknown>): unknown | Promise<unknown>;
+}
+
 export interface CreateAgentRequest {
   apiKey: string;
   cwd: string;
@@ -55,6 +69,7 @@ export interface CreateAgentRequest {
   systemPrompt?: string;
   tools?: string[];
   disallowedTools?: string[];
+  customTools?: Record<string, RuntimeCustomTool>;
 }
 
 export interface AgentRuntime {

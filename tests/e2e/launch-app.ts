@@ -15,6 +15,12 @@ export async function launchSwarmy(): Promise<{ app: ElectronApplication; close:
     },
   });
 
+  const page = await app.firstWindow();
+  await app.evaluate(({ BrowserWindow }) => {
+    BrowserWindow.getAllWindows()[0]?.setSize(1440, 1000);
+  });
+  await page.waitForFunction("() => window.innerWidth >= 1200");
+
   return {
     app,
     async close() {

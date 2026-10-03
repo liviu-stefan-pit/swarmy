@@ -29,7 +29,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 7 | Workflow persistence | [x] | phase-07 | 2026-10-03 |
 | 8 | Agent runtime and single run | [x] | phase-08 | 2026-10-03 |
 | 9 | Workspaces | [x] | phase-09 | 2026-10-03 |
-| 10 | LangGraph orchestrator | [ ] | | |
+| 10 | LangGraph orchestrator | [x] | phase-10 | 2026-10-03 |
 | 11 | Run control, steering, resume | [ ] | | |
 | 12 | Approval gates | [ ] | | |
 | 13 | Diff review | [ ] | | |
@@ -820,7 +820,15 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- **Run** in the workflow toolbar compiles the canvas into one LangGraph `StateGraph` node per canvas node and runs it. Independent branches run in the same superstep, so the two middle nodes of a diamond both start before either finishes. A node with more than one upstream edge uses LangGraph `defer` so it waits for those branches. There is no second scheduler.
+- A failing node records `failed` and does not throw, so an unrelated branch still completes. Downstream nodes that depend on the failure are marked `failed` and their agents do not start. A cycle is rejected by the existing validator before any agent is created.
+- Agent nodes call `AgentRuntime` in the workspace from Phase 9. The prompt tells the agent to call `submit_handoff` with `summary`, `files`, and `blockers`. Extra fields, including a chain of thought, are dropped. If the tool is not called, the final assistant text is the handoff and it is marked unstructured. The next agent's prompt and log include those summaries. If the node's tool list is set and omits `mcp`, the run adds `mcp` so the custom tool is offered.
+- The renderer streams `queued`, `running`, `completed`, `failed`, and `cancelled`. Running edges animate. Failed edges turn red. The card **Run** still starts one agent. **Cancel** during a workflow run is Phase 11.
+- Nodes that are not agents complete immediately and do not call the runtime. Phase 12, Phase 18, and Phase 19 still own approval interrupts, planner `Send`, and merge.
+- Checkpoints are rows in the same `swarmy.db` file as workflows, written with `node:sqlite`. Each workflow run uses a new checkpoint thread id. `@langchain/langgraph-checkpoint-validation` passed 721 tests. The channel-delta case is skipped under the name `@langchain/langgraph-checkpoint-sqlite`, the same skip as the official SQLite saver, because this saver stores full channel values.
+- End-to-end launches resize the window to 1440×1000. At 960px the canvas was too narrow for the second agent, so the existing connect test could not drop an edge. The product window size is unchanged.
+- Node docs updated (decision D13): `docs/nodes/agent.md`, the index, and `handles.md`. No new decision. No later phase prompt changed.
+- `npm run verify` exited 0.
 
 ---
 

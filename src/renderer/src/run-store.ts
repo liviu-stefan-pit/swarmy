@@ -4,20 +4,25 @@ import { useWorkflowStore } from "./workflow-store";
 
 type RunState = {
   statusByNode: Record<string, NodeRunStatus>;
+  logsByNode: Record<string, string>;
   log: string;
   workspacePath: string | null;
   activeNodeId: string | null;
+  workflowRunning: boolean;
   start: (nodeId: string) => Promise<void>;
+  startWorkflow: () => Promise<void>;
   cancel: () => Promise<void>;
 };
 
 export const useRunStore = create<RunState>((set, get) => ({
   statusByNode: {},
+  logsByNode: {},
   log: "",
   workspacePath: null,
   activeNodeId: null,
+  workflowRunning: false,
   async start(nodeId) {
-    if (get().activeNodeId) {
+    if (get().activeNodeId || get().workflowRunning) {
       return;
     }
     const workflow = useWorkflowStore.getState().workflow;
@@ -63,6 +68,37 @@ export const useRunStore = create<RunState>((set, get) => ({
       }
     }
   },
+  async startWorkflow() {
+    if (get().activeNodeId || get().workflowRunning) {
+      return;
+    }
+    const workflow = useWorkflowStore.getState().workflow;
+    set({
+      workflowRunning: true,
+      log: "",
+      workspacePath: null,
+      logsByNode: {},
+      statusByNode: Object.fromEntries(workflow.nodes.map((node) => [node.id, "queued" as const])),
+    });
+
+    const stop = window.swarmy.runs.onUpdate((update) => {
+      applyUpdate(set, get, update);
+    });
+
+    try {
+      const result = await window.swarmy.runs.startWorkflow(workflow);
+      const statusByNode = { ...get().statusByNode };
+      for (const [nodeId, status] of Object.entries(result.statuses)) {
+        statusByNode[nodeId] = status;
+      }
+      set({ statusByNode });
+    } catch (error) {
+      set({ log: errorText(error) });
+    } finally {
+      stop();
+      set({ workflowRunning: false });
+    }
+  },
   async cancel() {
     const nodeId = get().activeNodeId;
     if (!nodeId) {
@@ -85,6 +121,7 @@ function applyUpdate(
 ): void {
   set({
     log: update.log,
+    logsByNode: { ...get().logsByNode, [update.nodeId]: update.log },
     statusByNode: { ...get().statusByNode, [update.nodeId]: update.status },
     ...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
   });

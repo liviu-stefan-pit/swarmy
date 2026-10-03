@@ -1,5 +1,5 @@
 import type { EngineStatus } from "./protocol";
-import type { RunDone, RunStart, RunUpdate } from "./runs";
+import type { RunDone, RunStart, RunUpdate, WorkflowRunResult } from "./runs";
 import type { ConnectionInfo, HelloInfo } from "./settings";
 import type { Workflow } from "./workflow";
 import type { WorkflowSummary } from "./workflows";
@@ -22,6 +22,7 @@ export interface SwarmyApi {
   };
   runs: {
     start(input: RunStart): Promise<RunDone>;
+    startWorkflow(workflow: Workflow): Promise<WorkflowRunResult>;
     cancel(nodeId: string): Promise<void>;
     onUpdate(listener: (update: RunUpdate) => void): () => void;
   };

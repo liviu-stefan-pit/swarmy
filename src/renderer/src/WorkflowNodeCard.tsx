@@ -14,10 +14,11 @@ const handleColor: Record<HandleDataType, string> = {
   mcp: "#c4b5fd",
 };
 
-type FlowNodeData = { label: string; status?: NodeRunStatus; busy?: boolean };
+type FlowNodeData = { label: string; status?: NodeRunStatus; busy?: boolean; workflowRunning?: boolean };
 
 const statusClass: Record<NodeRunStatus, string> = {
   idle: "bg-zinc-800 text-zinc-300",
+  queued: "bg-zinc-800 text-zinc-200",
   running: "bg-sky-950 text-sky-200",
   completed: "bg-emerald-950 text-emerald-200",
   failed: "bg-red-950 text-red-200",
@@ -121,7 +122,7 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
           <button
             type="button"
             data-testid="cancel-run"
-            disabled={status !== "running"}
+            disabled={status !== "running" || data.workflowRunning}
             className="rounded border border-zinc-600 px-2 py-0.5 text-xs hover:bg-zinc-800 disabled:opacity-50"
             onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
               event.stopPropagation();

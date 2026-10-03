@@ -6,11 +6,13 @@ An Agent is a Cursor agent. It is the worker in the swarm. It can read text, a f
 
 ## On the canvas
 
-Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**, and **Cancel**. The pill reads `idle` until you run the node. A run moves it through `running`, then `completed`, `failed`, or `cancelled`.
+Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**, and **Cancel**. The pill reads `idle` until a run starts. A workflow run moves it through `queued`, then `running`, then `completed`, `failed`, or `cancelled`.
 
-**Run** sends that agent's task prompt to one Cursor agent. The reply streams into the **Run log** under the canvas. **Cancel** stops the run that is in progress. Only one agent runs at a time. Steering text is not on the card yet.
+**Run** on the card sends that agent's task prompt to one Cursor agent. The reply streams into the **Run log** under the canvas. **Cancel** stops that one run. Only one card run is active at a time. Steering text is not on the card yet.
 
-The run uses the workspace mode on this agent. While it runs, the **Run log** shows the workspace path. After the run finishes, Swarmy deletes a `repo` worktree or a `managed` folder. A `folder` path is left in place.
+**Run** in the workflow toolbar runs the whole graph. Independent branches run at the same time. A node waits until every node upstream of it has finished. If one of those fails, this node is marked `failed` and its agent does not start. An unrelated branch still finishes. While a branch is running, its edges animate. An edge turns red when either end has failed. Select a card to read that node's log. The log quotes the upstream handoff summaries.
+
+Each agent is asked to call `submit_handoff` with `summary`, `files`, and `blockers`. Those three fields are what the next agent sees. If the tool is not called, the final assistant text is the handoff and it is marked unstructured. The run uses the workspace mode on this agent. While it runs, the **Run log** shows the workspace path. After the node finishes, Swarmy deletes a `repo` worktree or a `managed` folder. A `folder` path is left in place.
 
 Select the card. The inspector on the right edits that agent only:
 
@@ -50,7 +52,7 @@ Several sources may share one input. A Text node and a Planner may both wire int
 
 | Phase | What arrives |
 | --- | --- |
-| 10 | The whole graph runs, and this node's text and diff are the handoff |
+| 11 | Cancel one agent or the whole run, steer a running agent, and resume after a restart |
 | 14 | Tool limits and a hook that blocks dangerous shell commands |
 
 ## Schema

@@ -37,6 +37,19 @@ function snapToGrid(value: number): number {
   return Math.round(value / gridSize) * gridSize;
 }
 
+function edgeVisual(
+  source: NodeRunStatus | undefined,
+  target: NodeRunStatus | undefined,
+): "idle" | "running" | "failed" {
+  if (source === "failed" || target === "failed") {
+    return "failed";
+  }
+  if (source === "running" || target === "running") {
+    return "running";
+  }
+  return "idle";
+}
+
 function shortConnectionError(error: string): string {
   return error.replace(/Type mismatch on edge \S+: /g, "");
 }
@@ -49,7 +62,8 @@ function FlowSurface() {
   const edges = useWorkflowStore((state) => state.workflow.edges);
   const selectedNodeId = useWorkflowStore((state) => state.selectedNodeId);
   const statusByNode = useRunStore((state) => state.statusByNode);
-  const runBusy = useRunStore((state) => state.activeNodeId !== null);
+  const workflowRunning = useRunStore((state) => state.workflowRunning);
+  const runBusy = useRunStore((state) => state.activeNodeId !== null) || workflowRunning;
   const connectionError = useWorkflowStore((state) => state.connectionError);
   const addNode = useWorkflowStore((state) => state.addNode);
   const connect = useWorkflowStore((state) => state.connect);
@@ -58,7 +72,9 @@ function FlowSurface() {
   const setViewport = useWorkflowStore((state) => state.setViewport);
   const initialViewport = useMemo(() => useWorkflowStore.getState().workflow.viewport, []);
 
-  const flowNodes = useMemo<Node<{ label: string; status: NodeRunStatus; busy: boolean }>[]>(
+  const flowNodes = useMemo<
+    Node<{ label: string; status: NodeRunStatus; busy: boolean; workflowRunning: boolean }>[]
+  >(
     () =>
       nodes.map((node) => ({
         id: node.id,
@@ -68,10 +84,11 @@ function FlowSurface() {
           label: node.data.label,
           status: statusByNode[node.id] ?? "idle",
           busy: runBusy,
+          workflowRunning,
         },
         selected: node.id === selectedNodeId,
       })),
-    [nodes, runBusy, selectedNodeId, statusByNode],
+    [nodes, runBusy, selectedNodeId, statusByNode, workflowRunning],
   );
 
   const flowEdges = useMemo<Edge[]>(
@@ -83,8 +100,9 @@ function FlowSurface() {
         sourceHandle: edge.sourceHandle,
         targetHandle: edge.targetHandle,
         type: "workflow",
+        data: { state: edgeVisual(statusByNode[edge.source], statusByNode[edge.target]) },
       })),
-    [edges],
+    [edges, statusByNode],
   );
 
   useEffect(() => {

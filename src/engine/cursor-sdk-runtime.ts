@@ -8,6 +8,7 @@ import {
   type Run,
   type RunResult,
   type SDKAgent,
+  type SDKCustomTool,
   type SDKMessage,
   type SDKUser,
   type SteerAckOutcome,
@@ -20,6 +21,7 @@ import type {
   HelloResult,
   RuntimeAccount,
   RuntimeAgent,
+  RuntimeCustomTool,
   RuntimeEvent,
   RuntimeModel,
   RuntimeRun,
@@ -292,8 +294,9 @@ function createLocalAgent(
       cwd: request.cwd,
       settingSources: [],
       store: new JsonlLocalAgentStore(storeDir),
+      ...(request.customTools ? { customTools: toSdkCustomTools(request.customTools) } : {}),
     },
-    ...(request.tools !== undefined ? { tools: request.tools } : {}),
+    ...(request.tools !== undefined ? { tools: withHandoffTool(request.tools, request.customTools) } : {}),
     ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
     ...(systemPrompt ? { systemPrompt } : {}),
   });
@@ -352,6 +355,31 @@ function isSystemPromptRejection(error: unknown): boolean {
 
 function isSystemPromptMessage(message: string | undefined): boolean {
   return Boolean(message?.includes("--system-prompt"));
+}
+
+function withHandoffTool(
+  tools: string[],
+  customTools: Record<string, RuntimeCustomTool> | undefined,
+): string[] {
+  if (!customTools || Object.keys(customTools).length === 0 || tools.includes("mcp")) {
+    return tools;
+  }
+  return [...tools, "mcp"];
+}
+
+function toSdkCustomTools(tools: Record<string, RuntimeCustomTool>): Record<string, SDKCustomTool> {
+  const mapped: Record<string, SDKCustomTool> = {};
+  for (const [name, tool] of Object.entries(tools)) {
+    mapped[name] = {
+      ...(tool.description ? { description: tool.description } : {}),
+      ...(tool.inputSchema ? { inputSchema: tool.inputSchema } : {}),
+      execute: async (args) => {
+        const value = await tool.execute(args);
+        return typeof value === "string" ? value : "ok";
+      },
+    };
+  }
+  return mapped;
 }
 
 function redact(error: unknown, apiKey: string): Error {

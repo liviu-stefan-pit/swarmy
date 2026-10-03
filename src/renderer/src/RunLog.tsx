@@ -1,7 +1,12 @@
 import { useRunStore } from "./run-store";
+import { useWorkflowStore } from "./workflow-store";
 
 export function RunLog() {
   const log = useRunStore((state) => state.log);
+  const logsByNode = useRunStore((state) => state.logsByNode);
+  const selectedNodeId = useWorkflowStore((state) => state.selectedNodeId);
+  const selectedLog = selectedNodeId ? logsByNode[selectedNodeId] : undefined;
+  const shown = selectedLog && selectedLog.length > 0 ? selectedLog : log;
   const workspacePath = useRunStore((state) => state.workspacePath);
 
   return (
@@ -16,7 +21,7 @@ export function RunLog() {
         data-testid="run-log"
         className="mt-1 max-h-28 overflow-auto font-mono text-xs whitespace-pre-wrap text-zinc-200"
       >
-        {log.length > 0 ? log : "No run yet."}
+        {shown.length > 0 ? shown : "No run yet."}
       </pre>
     </section>
   );

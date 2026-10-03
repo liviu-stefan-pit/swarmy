@@ -11,3 +11,16 @@
   --xy-background-color: #09090b;
   background-color: #09090b;
 }
+
+@keyframes swarmy-edge-flow {
+  to {
+    stroke-dashoffset: -20;
+  }
+}
+
+.swarmy-edge-running {
+  stroke: #38bdf8;
+  stroke-width: 2;
+  stroke-dasharray: 6 4;
+  animation: swarmy-edge-flow 0.8s linear infinite;
+}

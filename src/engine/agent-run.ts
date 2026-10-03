@@ -9,6 +9,7 @@ export interface AgentRunRequest extends CreateAgentRequest {
 export interface AgentRunOutcome {
   status: Exclude<AgentNodeStatus, "running">;
   log: string;
+  text: string;
   error?: string;
 }
 
@@ -79,7 +80,7 @@ export function startAgentRun(input: {
       report("running", log);
       agent = await input.runtime.create(createRequest(input.request));
       if (cancelRequested) {
-        const outcome: AgentRunOutcome = { status: "cancelled", log };
+        const outcome: AgentRunOutcome = { status: "cancelled", log, text: "" };
         report("cancelled", log);
         return outcome;
       }
@@ -102,7 +103,7 @@ export function startAgentRun(input: {
       const message = error instanceof Error && error.message ? error.message : "Run did not start";
       const failedLog = log.length > 0 ? `${log}\nRun did not start: ${message}` : `Run did not start: ${message}`;
       report("failed", failedLog);
-      return { status: "failed", log: failedLog, error: message };
+      return { status: "failed", log: failedLog, text: "", error: message };
     } finally {
       await agent?.dispose();
     }
@@ -118,16 +119,16 @@ function finish(
     const message = result.error ?? "Run failed";
     const failedLog = appendLine(log, message);
     report("failed", failedLog);
-    return { status: "failed", log: failedLog, error: message };
+    return { status: "failed", log: failedLog, text: result.text, error: message };
   }
   if (result.status === "cancelled") {
     report("cancelled", log);
-    return { status: "cancelled", log };
+    return { status: "cancelled", log, text: result.text };
   }
   const completedLog =
     result.text.length > 0 && !log.includes(result.text) ? appendLine(log, result.text) : log;
   report("completed", completedLog);
-  return { status: "completed", log: completedLog };
+  return { status: "completed", log: completedLog, text: result.text };
 }
 
 function createRequest(request: AgentRunRequest): CreateAgentRequest {
@@ -140,6 +141,7 @@ function createRequest(request: AgentRunRequest): CreateAgentRequest {
     ...(systemPrompt ? { systemPrompt } : {}),
     ...(request.tools !== undefined ? { tools: request.tools } : {}),
     ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
+    ...(request.customTools !== undefined ? { customTools: request.customTools } : {}),
   };
 }
 

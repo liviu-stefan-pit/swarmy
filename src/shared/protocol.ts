@@ -1,5 +1,5 @@
 import { z } from "zod";
-import { runUpdateSchema } from "./runs";
+import { nodeRunStatusSchema, runUpdateSchema } from "./runs";
 import { workflowSchema, workspaceModeSchema } from "./workflow";
 import { workflowSummarySchema } from "./workflows";
 
@@ -159,6 +159,19 @@ export const runFailedMessageSchema = z.object({
   message: z.string().min(1),
 });
 
+export const workflowRunMessageSchema = z.object({
+  type: z.literal("workflow.run"),
+  id: z.string().min(1),
+  workflow: workflowSchema,
+  apiKey: z.string().min(1),
+});
+
+export const workflowRunDoneMessageSchema = z.object({
+  type: z.literal("workflow.runDone"),
+  id: z.string().min(1),
+  statuses: z.record(z.string(), nodeRunStatusSchema),
+});
+
 export const engineMessageSchema = z.discriminatedUnion("type", [
   engineHelloMessageSchema,
   engineReadyMessageSchema,
@@ -185,6 +198,8 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   runCancelMessageSchema,
   runCancelResultMessageSchema,
   runFailedMessageSchema,
+  workflowRunMessageSchema,
+  workflowRunDoneMessageSchema,
 ]);
 
 export type EngineMessage = z.infer<typeof engineMessageSchema>;
