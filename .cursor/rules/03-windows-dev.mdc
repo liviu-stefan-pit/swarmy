@@ -1,0 +1,23 @@
+---
+description: Windows and PowerShell constraints for commands, paths, and scripts
+alwaysApply: true
+---
+
+# Windows
+
+The app ships on Windows only. Develop and script for PowerShell.
+
+- Quote paths. Prefer `path.join` over string concatenation.
+- Do not add bash-only scripts. Guard hooks and git helpers are `.ps1`.
+- Long paths: repo `core.longpaths` is on. Worktrees go under `%LOCALAPPDATA%\Swarmy\wt\`, not inside the repo.
+- Before deleting a worktree: kill the child process tree (`taskkill /pid <pid> /T /F`), `chdir` away from it, then retry with backoff. See decision D7.
+- `Remove-Item -Recurse` on a workspace root is a denied command in guardrails. Do not suggest it as cleanup for agent workspaces.
+
+```powershell
+# BAD
+rm -rf .worktrees
+# GOOD
+taskkill /pid $pid /T /F
+Set-Location $repoRoot
+git worktree remove --force $wt
+```

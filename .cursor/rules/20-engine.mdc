@@ -1,0 +1,26 @@
+---
+description: Engine boundaries, AgentRuntime, and Cursor SDK lifecycle rules
+globs: "src/engine/**/*.ts,src/engine/**/*.tsx"
+alwaysApply: false
+---
+
+# Engine
+
+The engine is plain Node. It must run in-process under Vitest and inside an Electron utility process. Do not import `electron` or React.
+
+- Call `@cursor/sdk` only inside `CursorSdkRuntime`. The rest of the engine depends on `AgentRuntime`.
+- Always `run.stream()` then `await run.wait()`. Dispose every agent in `finally`.
+- A thrown `CursorSdkError` means the run never started. `result.status === "error"` means it started and failed.
+- Pass `systemPrompt`, `tools`, `disallowedTools`, and `mcpServers` again on `Agent.resume()`. The SDK does not keep them.
+- If `systemPrompt` is rejected, retry once with the instructions prefixed to the user prompt and surface a warning (decision D9).
+
+```typescript
+await using agent = await Agent.create({ /* local: { cwd } required */ });
+try {
+  const run = await agent.send(prompt);
+  for await (const event of run.stream()) { /* map into our event type */ }
+  return await run.wait();
+} finally {
+  /* await using disposes */
+}
+```

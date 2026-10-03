@@ -1,0 +1,16 @@
+---
+description: How a phase chat starts, stays in scope, and updates the living plan
+alwaysApply: true
+---
+
+# Phase protocol
+
+When the user pastes a phase prompt, or asks to start, continue, or finish a phase:
+
+1. Follow `.cursor/skills/start-phase/SKILL.md` before editing.
+2. Stay inside that phase's **In scope**. If the plan is wrong, add a Decision and say so. Do not quietly widen the phase.
+3. Read **User Notes** and `git log` since the previous `phase-NN` tag. Those are the user's changes. Do not revert them.
+4. When the work is done, follow `.cursor/skills/finish-phase/SKILL.md`.
+5. Do not commit or tag until the user confirms the manual test passed.
+
+Update `docs/PLAN.md` in place: status marks, completion notes, and new decisions. Do not rewrite old decisions.

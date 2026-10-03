@@ -1,0 +1,21 @@
+---
+description: Renderer patterns for React Flow, Zustand, and test ids
+globs: "src/renderer/**/*.ts,src/renderer/**/*.tsx"
+alwaysApply: false
+---
+
+# Renderer
+
+The renderer draws the workflow and sends typed messages. It does not run agents, touch git, or import `@cursor/sdk`.
+
+- Workflow state lives in Zustand. React Flow is a view of that store, not the store itself.
+- Illegal connections are rejected by the shared validator. Do not keep a second copy of the type rules in the component.
+- Elements a test clicks need `data-testid` in kebab-case.
+- jsdom tests must stub `ResizeObserver` and `matchMedia` when a component uses React Flow.
+
+```tsx
+// BAD — connection rules reimplemented in the component
+if (source.name === "diff") return false;
+// GOOD
+const error = connectError(workflow, source, target);
+```

@@ -1,0 +1,23 @@
+---
+description: Tests are written first and shown failing before implementation
+alwaysApply: true
+---
+
+# Test first
+
+For every behavior in the current phase:
+
+1. Write the test named in that phase of `docs/PLAN.md`.
+2. Run it and show the failure in the chat before writing production code.
+3. Write the code until the test passes. Refactor only after it is green.
+
+- Do not weaken, skip, or delete a test to make it pass. Ask the user first.
+- Automated tests use `FakeRuntime` and must not call the Cursor API or the network.
+- A phase is not done until `npm run verify` passes (once that script exists).
+- New UI that a test drives needs a stable `data-testid`.
+
+```typescript
+// BAD — production code first, test later that only asserts a mock you control
+// GOOD — the test fails because the module or behavior does not exist yet
+expect(appInfo().name).toBe("Swarmy");
+```

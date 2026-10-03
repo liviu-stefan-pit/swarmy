@@ -1,0 +1,20 @@
+---
+description: TypeScript strictness, zod at boundaries, and discriminated unions
+globs: "**/*.ts,**/*.tsx"
+alwaysApply: false
+---
+
+# TypeScript
+
+`strict` is on. Do not use `any`, and do not silence errors with `as` unless the SDK type is genuinely `unknown` and you just parsed it.
+
+- Validate IPC payloads, workflow JSON, and tool results with zod. Infer the TypeScript type from the schema.
+- Model variants as a discriminated union (`type` field), not optional bags.
+- No non-null assertions on values that came from disk or the network.
+
+```typescript
+// BAD
+const msg = JSON.parse(raw) as Hello;
+// GOOD
+const msg = helloSchema.parse(JSON.parse(raw));
+```

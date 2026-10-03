@@ -1,0 +1,22 @@
+node_modules/
+dist/
+out/
+release/
+.vite/
+*.log
+.env
+.env.*
+!.env.example
+coverage/
+playwright-report/
+test-results/
+*.tsbuildinfo
+.DS_Store
+Thumbs.db
+
+# Cursor planning artifacts. The living plan is docs/PLAN.md.
+.cursor/plans/
+
+# Local swarm runtime data
+.swarm/
+.worktrees/

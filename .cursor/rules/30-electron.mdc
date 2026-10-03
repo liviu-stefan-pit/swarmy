@@ -1,0 +1,20 @@
+---
+description: Electron security, IPC allow-list, and secret storage
+globs: "src/main/**/*.ts,src/main/**/*.tsx,src/preload/**/*.ts,src/preload/**/*.tsx"
+alwaysApply: false
+---
+
+# Electron
+
+- `contextIsolation: true` and `nodeIntegration: false`. The renderer reaches Node only through the preload.
+- Preload exposes one `window.swarmy` object via `contextBridge`. Do not expose `ipcRenderer` raw.
+- Every channel is a zod schema in `src/shared`. The main process rejects payloads that fail the schema.
+- The API key and MCP headers go through `safeStorage`. Do not log them, and do not put them in workflow JSON (decision D10).
+- Spawn the engine with `utilityProcess.fork`. Restart it if it exits unexpectedly. Do not run agent loops in the renderer.
+
+```typescript
+// BAD
+webPreferences: { nodeIntegration: true, contextIsolation: false }
+// GOOD
+webPreferences: { nodeIntegration: false, contextIsolation: true, preload }
+```

@@ -1,0 +1,22 @@
+---
+description: What Swarmy is, where the plan lives, and the boundaries every change must respect
+alwaysApply: true
+---
+
+# Swarmy core
+
+Swarmy is a Windows Electron app for building and running swarms of Cursor agents on a visual canvas. The source of truth is `docs/PLAN.md`. Read it before writing code, including **User Notes**, **Decisions**, and the current phase.
+
+- Stack: Electron, React, TypeScript, `@xyflow/react`, Zustand, LangGraph.js, `@cursor/sdk` (local agents only), SQLite.
+- Where a research PDF in `docs/research` disagrees with `docs/PLAN.md` or the Cursor SDK docs, the plan and the SDK docs win.
+- Folder boundaries are in the plan's Architecture table. Do not import across them.
+- Do not start a later phase. Do not add a dependency until the phase that imports it.
+- `src/engine` never imports Electron or React. `src/renderer` never imports `@cursor/sdk` or Node.
+
+```typescript
+// BAD — renderer talking to the SDK
+import { Agent } from "@cursor/sdk";
+
+// GOOD — renderer sends a typed message defined in src/shared
+window.swarmy.engine.send({ type: "run.start", workflowId });
+```
