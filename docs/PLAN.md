@@ -20,7 +20,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | Phase | Title | Status | Tag | Date |
 | --- | --- | --- | --- | --- |
 | 0 | Workspace and master plan | [x] | phase-00 | 2026-10-03 |
-| 1 | Scaffold and test harness | [ ] | | |
+| 1 | Scaffold and test harness | [x] | phase-01 | 2026-10-03 |
 | 2 | Typed IPC and engine process | [ ] | | |
 | 3 | Cursor connection and SDK spike | [ ] | | |
 | 4 | Workflow model and validation | [ ] | | |
@@ -322,7 +322,13 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A window titled Swarmy opens from `appInfo()` in `src/shared`. The same helper sets the BrowserWindow title and the renderer heading. Tailwind styles that screen. Preload is a stub until Phase 2; the production build warns about an empty preload chunk until the bridge exists.
+- Scripts: `dev`, `build`, `test`, `test:e2e`, `typecheck`, `lint`, `verify`. `npm run verify` exited 0 (typecheck, lint, unit, Playwright). Playwright launches the built app with `SWARMY_RUNTIME=fake` and checks that value plus the window title.
+- Vitest has a node project and a jsdom project. The jsdom project renders `App` with React Testing Library, in addition to the two tests named in this phase.
+- Folders: `src/shared`, `src/engine` (empty), `src/main`, `src/preload`, `src/renderer`, `tests/e2e`. No canvas, IPC protocol, SDK, or persistence.
+- Window preferences: `contextIsolation: true`, `nodeIntegration: false`, `sandbox: false`. Sandbox stays off because that is how electron-vite's preload bundle loads.
+- Toolchain, recorded so a later phase does not bump past it by accident: TypeScript 5.9.3, because typescript-eslint 8.71 accepts TypeScript below 6.1. Vite 7, because electron-vite 5 peers Vite 5–7 and the current Vite major is 8. npm 11 will not run esbuild's postinstall unless `allowScripts` in `package.json` allows it.
+- No deviations that change a later phase.
 
 ---
 
