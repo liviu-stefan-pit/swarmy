@@ -121,6 +121,23 @@ export const workflowDeleteResultMessageSchema = z.object({
   id: z.string().min(1),
 });
 
+export const workflowImportMessageSchema = z.object({
+  type: z.literal("workflow.import"),
+  id: z.string().min(1),
+  bytes: z.string().min(1),
+  knownSecrets: z.array(z.string().min(1)),
+  workflowId: z.string().min(1),
+});
+
+export const workflowImportResultMessageSchema = z.object({
+  type: z.literal("workflow.importResult"),
+  id: z.string().min(1),
+  saved: z.boolean(),
+  missingSecrets: z.array(z.string()),
+  workflow: workflowSchema,
+  summary: workflowSummarySchema.optional(),
+});
+
 export const workflowFailedMessageSchema = z.object({
   type: z.literal("workflow.failed"),
   id: z.string().min(1),
@@ -356,6 +373,8 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   workflowListResultMessageSchema,
   workflowDeleteMessageSchema,
   workflowDeleteResultMessageSchema,
+  workflowImportMessageSchema,
+  workflowImportResultMessageSchema,
   workflowFailedMessageSchema,
   runStartMessageSchema,
   runUpdateMessageSchema,

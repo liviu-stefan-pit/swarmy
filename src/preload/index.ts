@@ -68,7 +68,13 @@ import type { SwarmyApi } from "@shared/swarmy-api";
 import { workflowSchema } from "@shared/workflow";
 import {
   workflowDeleteChannel,
+  workflowExportChannel,
+  workflowExportResultSchema,
   workflowIdPayloadSchema,
+  workflowImportChannel,
+  workflowImportCommitChannel,
+  workflowImportCommitPayloadSchema,
+  workflowImportResultSchema,
   workflowListChannel,
   workflowListResultSchema,
   workflowLoadChannel,
@@ -195,6 +201,17 @@ const swarmy: SwarmyApi = {
     async delete(id) {
       const parsed = workflowIdPayloadSchema.parse({ id });
       await ipcRenderer.invoke(workflowDeleteChannel, parsed);
+    },
+    async exportFile(workflow) {
+      const parsed = workflowSchema.parse(workflow);
+      return workflowExportResultSchema.parse(await ipcRenderer.invoke(workflowExportChannel, parsed));
+    },
+    async importFile() {
+      return workflowImportResultSchema.parse(await ipcRenderer.invoke(workflowImportChannel));
+    },
+    async commitImport(workflow, secrets) {
+      const parsed = workflowImportCommitPayloadSchema.parse({ workflow, secrets });
+      return workflowSummarySchema.parse(await ipcRenderer.invoke(workflowImportCommitChannel, parsed));
     },
   },
   runs: {

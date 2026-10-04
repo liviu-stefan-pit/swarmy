@@ -11,6 +11,7 @@ import { forkRun, listPendingApprovals, listRunCheckpoints, startWorkflowRun, ty
 import { openRunCatalog, unfinishedThread, type RunCatalog } from "./run-catalog";
 import { openTaskBoard, type TaskBoard } from "./task-board";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
+import { importSwarmArchive } from "./swarm-import";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
 import { createWorkspaceManager, type AgentWorkspace, type WorkspaceManager } from "./workspace-manager";
 
@@ -767,7 +768,7 @@ function readMessage(input: unknown): EngineMessage | undefined {
 
 type WorkflowRequest = Extract<
   EngineMessage,
-  { type: "workflow.save" | "workflow.load" | "workflow.list" | "workflow.delete" }
+  { type: "workflow.save" | "workflow.load" | "workflow.list" | "workflow.delete" | "workflow.import" }
 >;
 
 function isWorkflowRequest(message: EngineMessage): message is WorkflowRequest {
@@ -775,7 +776,8 @@ function isWorkflowRequest(message: EngineMessage): message is WorkflowRequest {
     message.type === "workflow.save" ||
     message.type === "workflow.load" ||
     message.type === "workflow.list" ||
-    message.type === "workflow.delete"
+    message.type === "workflow.delete" ||
+    message.type === "workflow.import"
   );
 }
 
@@ -794,8 +796,25 @@ function answerWorkflow(port: EnginePort, getWorkflows: () => WorkflowDb, messag
       port.postMessage({ type: "workflow.listResult", id: message.id, workflows: db.list() });
       return;
     }
-    db.delete(message.workflowId);
-    port.postMessage({ type: "workflow.deleteResult", id: message.id });
+    if (message.type === "workflow.delete") {
+      db.delete(message.workflowId);
+      port.postMessage({ type: "workflow.deleteResult", id: message.id });
+      return;
+    }
+    const imported = importSwarmArchive(
+      db,
+      new Uint8Array(Buffer.from(message.bytes, "base64")),
+      new Set(message.knownSecrets),
+      message.workflowId,
+    );
+    port.postMessage({
+      type: "workflow.importResult",
+      id: message.id,
+      saved: imported.saved,
+      missingSecrets: imported.missingSecrets,
+      workflow: imported.workflow,
+      ...(imported.summary ? { summary: imported.summary } : {}),
+    });
   } catch (error) {
     const text = error instanceof Error && error.message ? error.message : "The workflow request failed";
     port.postMessage({ type: "workflow.failed", id: message.id, message: text });

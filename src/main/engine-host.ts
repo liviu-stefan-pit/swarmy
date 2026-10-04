@@ -39,6 +39,7 @@ const resultByRequest = {
   "workflow.load": "workflow.loadResult",
   "workflow.list": "workflow.listResult",
   "workflow.delete": "workflow.deleteResult",
+  "workflow.import": "workflow.importResult",
   "run.start": "run.done",
   "run.cancel": "run.cancelResult",
   "run.steer": "run.steerResult",
@@ -249,6 +250,7 @@ function isEngineReply(message: EngineMessage): message is EngineSuccess | Engin
     message.type === "workflow.loadResult" ||
     message.type === "workflow.listResult" ||
     message.type === "workflow.deleteResult" ||
+    message.type === "workflow.importResult" ||
     message.type === "workflow.failed" ||
     message.type === "run.done" ||
     message.type === "run.cancelResult" ||
@@ -293,6 +295,7 @@ function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessag
     case "approval.decide":
       return { timeoutMs: WORKFLOW_TIMEOUT_MS, timeoutMessage: "Workflow request timed out" };
     case "workflow.delete":
+    case "workflow.import":
     case "workflow.list":
     case "workflow.load":
     case "workflow.save":

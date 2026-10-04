@@ -44,7 +44,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 19 | Merge node | [x] | phase-19 | 2026-10-04 |
 | 19.5 | Review layout | [x] | phase-19.5 | 2026-10-04 |
 | 20 | Inputs and MCP | [x] | phase-20 | 2026-10-04 |
-| 21 | Templates and export | [ ] | | |
+| 21 | Templates and export | [x] | phase-21 | 2026-10-04 |
 | 22 | Triggers and notifications | [ ] | | |
 | 23 | Packaging | [ ] | | |
 
@@ -1858,9 +1858,31 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Create a workflow from the QA template. The canvas is pre-filled and Run is available.
-2. Export it. Unzip the `.swarm` file and confirm no key or token is inside.
-3. Import that file as a second workflow.
+You do not need an API key or `C:\prod\scratch-repo` for this phase. Leave **Required env vars** empty. Do not click **Run**.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. In the toolbar, click **New**. A dialog titled **New workflow** lists **Blank**, **Architect**, **Coder**, **Reviewer**, **QA**, **Product Owner**, **Project Manager**, and **Researcher**.
+3. Click **QA**. The dialog closes. The **Name** box reads **QA**, or **QA** plus a number if that name is already in **Workflows**. Remember this name.
+4. The canvas shows two cards: **Brief** and **QA**. The **QA** pill reads **idle**. **Run** is enabled.
+5. Click **Brief**. The inspector **Text** box contains `Describe the work for the QA.`
+6. Click **QA**. **System prompt** contains `You are the QA` and `handoff`. **Task prompt** contains `handoff`.
+7. **Required env vars** is empty and shows the placeholder **none**. Leave it empty.
+8. Click **Export**. In the save dialog, go to `C:\prod`, set the file name to `qa.swarm`, and save. Replace the file if Windows asks.
+9. In PowerShell:
+
+```powershell
+Add-Type -AssemblyName System.IO.Compression.FileSystem
+$dest = "C:\prod\qa-swarm"
+if (Test-Path $dest) { Remove-Item $dest -Recurse -Force }
+[System.IO.Compression.ZipFile]::ExtractToDirectory("C:\prod\qa.swarm", $dest)
+Get-ChildItem $dest | Select-Object -ExpandProperty Name
+Select-String -Path "$dest\*" -Pattern "apiKey","password","authorization","secret","token" -SimpleMatch
+```
+
+The folder lists `workflow.json`, `prompts.json`, and `requiredEnvVars.json`. `requiredEnvVars.json` is `[]`. `prompts.json` contains `You are the QA` and `handoff`. `Select-String` prints nothing.
+
+10. Back in Swarmy, click **Import**. Choose `C:\prod\qa.swarm` and open it. The imported workflow opens immediately.
+11. The **Workflows** list has one more row, and that row is selected. **Name** is the next free **QA** name (for example **QA 2** when step 3 created **QA**). The canvas still shows **Brief** and **QA**. The **QA** pill reads **idle**. **Run** is enabled.
 
 **Prompt.**
 
@@ -1875,7 +1897,11 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- **New** opens a picker. **Blank** is an empty canvas. Architect, Coder, Reviewer, QA, Product Owner, Project Manager, and Researcher each place a Brief text node and one agent. The prompts name the role and the `submit_handoff` contract (`summary`, `files`, `blockers`). Each template passes `validateWorkflow`.
+- **Export** writes a `.swarm` zip with `workflow.json`, `prompts.json`, and `requiredEnvVars.json`. Field names `apiKey`, `token`, `secret`, `password`, and `authorization` are removed before the JSON is written (decision D10). `headerSecretId` and `budgetTokens` stay. **Required env vars** in the toolbar stores names on the workflow. The values stay in `safeStorage` (`CURSOR_API_KEY` in the existing key file, every other name in `env-secrets.bin`).
+- **Import** validates with the Phase 4 validator and refuses a cycle before any workflow row is written. A valid file becomes a new workflow id. If a required env var is not already on this PC, import waits and asks for the value. An empty value is refused. Cancel leaves the library unchanged.
+- Node docs updated (decision D13): the index and `handles.md` (handles did not change). No new decision. Phase 22 is unchanged.
+- The manual test above is the step-by-step walkthrough. `npm run verify` exited 0.
 
 ---
 

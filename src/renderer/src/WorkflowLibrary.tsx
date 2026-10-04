@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState, type ReactNode } from "react";
+import { builtinTemplates, workflowFromTemplate, type BuiltinTemplate } from "@shared/templates";
 import { workflowSchema, type Workflow } from "@shared/workflow";
 import type { WorkflowSummary } from "@shared/workflows";
 import { useRunStore } from "./run-store";
@@ -43,18 +44,26 @@ function createEmptyWorkflow(name: string): Workflow {
   });
 }
 
-function unusedName(summaries: readonly WorkflowSummary[]): string {
+function unusedName(summaries: readonly WorkflowSummary[], base = "Untitled"): string {
   const taken = new Set(summaries.map((item) => item.name));
-  if (!taken.has("Untitled")) {
-    return "Untitled";
+  if (!taken.has(base)) {
+    return base;
   }
   let n = 2;
-  let name = `Untitled ${n}`;
+  let name = `${base} ${n}`;
   while (taken.has(name)) {
     n += 1;
-    name = `Untitled ${n}`;
+    name = `${base} ${n}`;
   }
   return name;
+}
+
+function parseEnvNames(value: string): string[] | undefined {
+  const names = value.split(/[\s,]+/).filter((name) => name.length > 0);
+  if (names.some((name) => !/^[A-Za-z_][A-Za-z0-9_]*$/.test(name))) {
+    return undefined;
+  }
+  return names;
 }
 
 function upsertSummary(current: readonly WorkflowSummary[], summary: WorkflowSummary): WorkflowSummary[] {
@@ -127,6 +136,9 @@ export function WorkflowLibrary({ children }: { children: ReactNode }) {
   const [summaries, setSummaries] = useState<WorkflowSummary[]>([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
+  const [picking, setPicking] = useState(false);
+  const [pendingImport, setPendingImport] = useState<Workflow | null>(null);
+  const [secretDrafts, setSecretDrafts] = useState<Record<string, string>>({});
   const flushRef = useRef<() => Promise<void>>(async () => undefined);
   const discardRef = useRef<() => Promise<void>>(async () => undefined);
 
@@ -240,15 +252,85 @@ export function WorkflowLibrary({ children }: { children: ReactNode }) {
     };
   }, [ready]);
 
-  async function createWorkflow(): Promise<void> {
+  async function createWorkflow(template: BuiltinTemplate | null): Promise<void> {
+    setPicking(false);
     setBusy(true);
     setError("");
     try {
       await flushRef.current();
-      const workflow = createEmptyWorkflow(unusedName(summaries));
+      const name = unusedName(summaries, template?.name ?? "Untitled");
+      const workflow = template
+        ? workflowFromTemplate(template, crypto.randomUUID(), name)
+        : createEmptyWorkflow(name);
       const summary = await window.swarmy.workflows.save(workflow);
       useWorkflowStore.getState().replaceWorkflow(workflow);
       setSummaries((current) => upsertSummary(current, summary));
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function exportWorkflow(): Promise<void> {
+    setBusy(true);
+    setError("");
+    try {
+      await flushRef.current();
+      await window.swarmy.workflows.exportFile(useWorkflowStore.getState().workflow);
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function importWorkflow(): Promise<void> {
+    setBusy(true);
+    setError("");
+    try {
+      await flushRef.current();
+      const result = await window.swarmy.workflows.importFile();
+      if (result.status === "cancelled") {
+        return;
+      }
+      if (result.status === "needsSecrets") {
+        setPendingImport(result.workflow);
+        setSecretDrafts({});
+        return;
+      }
+      useWorkflowStore.getState().replaceWorkflow(result.workflow);
+      setSummaries((current) => upsertSummary(current, result.summary));
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function commitImport(): Promise<void> {
+    const workflow = pendingImport;
+    if (!workflow) {
+      return;
+    }
+    const required = workflow.requiredEnvVars ?? [];
+    const secrets: Record<string, string> = {};
+    for (const name of required) {
+      const value = (secretDrafts[name] ?? "").trim();
+      if (!value) {
+        setError(`${name} is required`);
+        return;
+      }
+      secrets[name] = value;
+    }
+    setBusy(true);
+    setError("");
+    try {
+      const summary = await window.swarmy.workflows.commitImport(workflow, secrets);
+      useWorkflowStore.getState().replaceWorkflow(workflow);
+      setSummaries((current) => upsertSummary(current, summary));
+      setPendingImport(null);
+      setSecretDrafts({});
     } catch (caught) {
       setError(errorText(caught));
     } finally {
@@ -322,7 +404,13 @@ export function WorkflowLibrary({ children }: { children: ReactNode }) {
         busy={busy}
         error={error}
         onCreate={() => {
-          void createWorkflow();
+          setPicking(true);
+        }}
+        onExport={() => {
+          void exportWorkflow();
+        }}
+        onImport={() => {
+          void importWorkflow();
         }}
         onOpen={(id) => {
           void openWorkflow(id);
@@ -336,7 +424,155 @@ export function WorkflowLibrary({ children }: { children: ReactNode }) {
           setSummaries((current) => current.map((item) => (item.id === id ? { ...item, name } : item)));
         }}
       />
+      {picking ? (
+        <TemplatePicker
+          busy={busy}
+          onCancel={() => {
+            setPicking(false);
+          }}
+          onChoose={(template) => {
+            void createWorkflow(template);
+          }}
+        />
+      ) : null}
+      {pendingImport ? (
+        <ImportSecrets
+          names={pendingImport.requiredEnvVars ?? []}
+          drafts={secretDrafts}
+          busy={busy}
+          onChange={(name, value) => {
+            setSecretDrafts((current) => ({ ...current, [name]: value }));
+          }}
+          onCancel={() => {
+            setPendingImport(null);
+            setSecretDrafts({});
+          }}
+          onSave={() => {
+            void commitImport();
+          }}
+        />
+      ) : null}
       {children}
+    </div>
+  );
+}
+
+function TemplatePicker({
+  busy,
+  onCancel,
+  onChoose,
+}: {
+  busy: boolean;
+  onCancel: () => void;
+  onChoose: (template: BuiltinTemplate | null) => void;
+}) {
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4" data-testid="template-picker">
+      <div className="max-h-full w-96 overflow-auto rounded border border-zinc-700 bg-zinc-900 p-4">
+        <h2 className="text-sm font-medium text-zinc-50">New workflow</h2>
+        <p className="mt-1 text-sm text-zinc-400">Start blank, or start from a role.</p>
+        <div className="mt-3 flex flex-col gap-2">
+          <button
+            type="button"
+            data-testid="template-blank"
+            disabled={busy}
+            className="rounded border border-zinc-600 px-3 py-2 text-left text-sm hover:bg-zinc-800 disabled:opacity-50"
+            onClick={() => {
+              onChoose(null);
+            }}
+          >
+            Blank
+          </button>
+          {builtinTemplates.map((template) => (
+            <button
+              key={template.id}
+              type="button"
+              data-testid={`template-${template.id}`}
+              disabled={busy}
+              className="rounded border border-zinc-600 px-3 py-2 text-left text-sm hover:bg-zinc-800 disabled:opacity-50"
+              onClick={() => {
+                onChoose(template);
+              }}
+            >
+              <span className="block font-medium text-zinc-50">{template.name}</span>
+              <span className="block text-zinc-400">{template.summary}</span>
+            </button>
+          ))}
+        </div>
+        <button
+          type="button"
+          data-testid="template-cancel"
+          className="mt-3 rounded border border-zinc-600 px-3 py-1.5 text-sm hover:bg-zinc-800"
+          onClick={onCancel}
+        >
+          Cancel
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function ImportSecrets({
+  names,
+  drafts,
+  busy,
+  onChange,
+  onCancel,
+  onSave,
+}: {
+  names: readonly string[];
+  drafts: Readonly<Record<string, string>>;
+  busy: boolean;
+  onChange: (name: string, value: string) => void;
+  onCancel: () => void;
+  onSave: () => void;
+}) {
+  const ready = names.every((name) => (drafts[name] ?? "").trim().length > 0);
+  return (
+    <div className="fixed inset-0 z-30 flex items-center justify-center bg-black/60 p-4" data-testid="import-secrets">
+      <div className="w-96 rounded border border-zinc-700 bg-zinc-900 p-4">
+        <h2 className="text-sm font-medium text-zinc-50">Values needed to import</h2>
+        <p className="mt-1 text-sm text-zinc-400">
+          Enter each value. Swarmy stores it on this PC and keeps it out of the workflow.
+        </p>
+        <div className="mt-3 flex flex-col gap-2">
+          {names.map((name) => (
+            <label key={name} className="flex flex-col gap-1 text-sm text-zinc-300">
+              {name}
+              <input
+                type="password"
+                data-testid={`import-secret-${name}`}
+                value={drafts[name] ?? ""}
+                disabled={busy}
+                className="rounded border border-zinc-700 bg-zinc-950 px-2 py-1 text-zinc-50 disabled:opacity-50"
+                onChange={(event) => {
+                  onChange(name, event.target.value);
+                }}
+              />
+            </label>
+          ))}
+        </div>
+        <div className="mt-3 flex gap-2">
+          <button
+            type="button"
+            data-testid="import-secrets-save"
+            disabled={busy || !ready}
+            className="rounded border border-sky-700 px-3 py-1.5 text-sm hover:bg-sky-950 disabled:opacity-50"
+            onClick={onSave}
+          >
+            Save and import
+          </button>
+          <button
+            type="button"
+            data-testid="import-secrets-cancel"
+            disabled={busy}
+            className="rounded border border-zinc-600 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-50"
+            onClick={onCancel}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
@@ -346,6 +582,8 @@ function WorkflowToolbar({
   busy,
   error,
   onCreate,
+  onExport,
+  onImport,
   onOpen,
   onDelete,
   onRename,
@@ -354,6 +592,8 @@ function WorkflowToolbar({
   busy: boolean;
   error: string;
   onCreate: () => void;
+  onExport: () => void;
+  onImport: () => void;
   onOpen: (id: string) => void;
   onDelete: () => void;
   onRename: (name: string) => void;
@@ -361,6 +601,7 @@ function WorkflowToolbar({
   const workflowId = useWorkflowStore((state) => state.workflow.id);
   const workflowName = useWorkflowStore((state) => state.workflow.name);
   const budgetTokens = useWorkflowStore((state) => state.workflow.budgetTokens);
+  const requiredEnvVars = useWorkflowStore((state) => state.workflow.requiredEnvVars);
   const [budgetDraft, setBudgetDraft] = useState({
     id: workflowId,
     value: budgetTokens === undefined ? "" : String(budgetTokens),
@@ -369,6 +610,14 @@ function WorkflowToolbar({
     setBudgetDraft({ id: workflowId, value: budgetTokens === undefined ? "" : String(budgetTokens) });
   }
   const budgetValue = budgetDraft.id === workflowId ? budgetDraft.value : budgetTokens === undefined ? "" : String(budgetTokens);
+  const [envDraft, setEnvDraft] = useState({
+    id: workflowId,
+    value: requiredEnvVars?.join(", ") ?? "",
+  });
+  if (envDraft.id !== workflowId) {
+    setEnvDraft({ id: workflowId, value: requiredEnvVars?.join(", ") ?? "" });
+  }
+  const envValue = envDraft.id === workflowId ? envDraft.value : (requiredEnvVars?.join(", ") ?? "");
   const [draftState, setDraftState] = useState({ id: workflowId, value: workflowName });
   if (draftState.id !== workflowId) {
     setDraftState({ id: workflowId, value: workflowName });
@@ -463,7 +712,48 @@ function WorkflowToolbar({
           }}
         />
       </label>
+      <label className="flex items-center gap-2 text-sm text-zinc-300">
+        Required env vars
+        <input
+          data-testid="required-env-vars"
+          aria-label="Required env vars"
+          value={envValue}
+          placeholder="none"
+          disabled={busy}
+          className="w-40 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-50 disabled:opacity-50"
+          onChange={(event) => {
+            setEnvDraft({ id: workflowId, value: event.target.value });
+          }}
+          onBlur={() => {
+            const names = parseEnvNames(envValue);
+            if (!names) {
+              setEnvDraft({ id: workflowId, value: requiredEnvVars?.join(", ") ?? "" });
+              return;
+            }
+            useWorkflowStore.getState().setRequiredEnvVars(names);
+            setEnvDraft({ id: workflowId, value: names.join(", ") });
+          }}
+        />
+      </label>
       <RunWorkflowButton />
+      <button
+        type="button"
+        data-testid="workflow-export"
+        disabled={busy}
+        className="rounded border border-zinc-600 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-50"
+        onClick={onExport}
+      >
+        Export
+      </button>
+      <button
+        type="button"
+        data-testid="workflow-import"
+        disabled={busy}
+        className="rounded border border-zinc-600 px-3 py-1.5 text-sm hover:bg-zinc-800 disabled:opacity-50"
+        onClick={onImport}
+      >
+        Import
+      </button>
       <button
         type="button"
         data-testid="workflow-delete"

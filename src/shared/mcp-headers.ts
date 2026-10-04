@@ -1,3 +1,4 @@
+import { stripSecretFields } from "./secret-fields";
 import { workflowSchema, type Workflow } from "./workflow";
 
 export interface McpHeaderStore {
@@ -32,6 +33,6 @@ export function rememberMcpHeaders(
   return workflowSchema.parse({ ...workflow, nodes });
 }
 
-export function exportWorkflowJson(workflow: Workflow): string {
-  return JSON.stringify(workflowSchema.parse(workflow));
+export function exportWorkflowJson(workflow: unknown): string {
+  return JSON.stringify(workflowSchema.parse(stripSecretFields(workflow)));
 }

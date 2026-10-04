@@ -17,7 +17,7 @@ import type {
 import type { ConnectionInfo, HelloInfo } from "./settings";
 import type { McpListToolsPayload } from "./mcp";
 import type { Workflow } from "./workflow";
-import type { WorkflowSummary } from "./workflows";
+import type { WorkflowExportResult, WorkflowImportResult, WorkflowSummary } from "./workflows";
 
 export interface SwarmyApi {
   engine: {
@@ -42,6 +42,9 @@ export interface SwarmyApi {
     load(id: string): Promise<Workflow>;
     save(workflow: Workflow): Promise<WorkflowSummary>;
     delete(id: string): Promise<void>;
+    exportFile(workflow: Workflow): Promise<WorkflowExportResult>;
+    importFile(): Promise<WorkflowImportResult>;
+    commitImport(workflow: Workflow, secrets: Record<string, string>): Promise<WorkflowSummary>;
   };
   runs: {
     start(input: RunStart): Promise<RunDone>;

@@ -88,6 +88,20 @@ const swarmy: SwarmyApi = {
     delete() {
       return Promise.resolve();
     },
+    exportFile() {
+      return Promise.resolve({ status: "cancelled" });
+    },
+    importFile() {
+      return Promise.resolve({ status: "cancelled" });
+    },
+    commitImport(workflow) {
+      return Promise.resolve({
+        id: workflow.id,
+        name: workflow.name,
+        createdAt: 0,
+        updatedAt: 0,
+      });
+    },
   },
   runs: {
     start() {

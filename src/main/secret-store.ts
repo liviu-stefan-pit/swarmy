@@ -2,9 +2,13 @@ import { randomUUID } from "node:crypto";
 import { app, safeStorage } from "electron";
 import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { z } from "zod";
 import { mcpHeaderMapSchema } from "@shared/mcp";
+import { requiredEnvVarNameSchema } from "@shared/workflow";
 
 const KEY_FILE = "cursor-api-key.bin";
+const ENV_FILE = "env-secrets.bin";
+const apiKeyName = "CURSOR_API_KEY";
 
 function keyPath(): string {
   return join(app.getPath("userData"), KEY_FILE);
@@ -66,6 +70,63 @@ export function readMcpHeaders(secretId: string): Record<string, string> | null 
 
 function mcpHeaderPath(secretId: string): string {
   return join(app.getPath("userData"), "mcp-headers", `${secretId}.bin`);
+}
+
+export function knownEnvSecretNames(): string[] {
+  const names = new Set(Object.keys(readEnvSecretMap()));
+  if (hasApiKey()) {
+    names.add(apiKeyName);
+  }
+  return [...names];
+}
+
+export function saveNamedSecrets(values: Record<string, string>): void {
+  const envUpdates: Record<string, string> = {};
+  for (const [name, value] of Object.entries(values)) {
+    const trimmed = value.trim();
+    if (!trimmed) {
+      throw new Error(`${name} is required`);
+    }
+    if (name === apiKeyName) {
+      saveApiKey(trimmed);
+      continue;
+    }
+    envUpdates[name] = trimmed;
+  }
+  if (Object.keys(envUpdates).length === 0) {
+    return;
+  }
+  writeEnvSecretMap({ ...readEnvSecretMap(), ...envUpdates });
+}
+
+function readEnvSecretMap(): Record<string, string> {
+  const path = join(app.getPath("userData"), ENV_FILE);
+  if (!existsSync(path)) {
+    return {};
+  }
+  let json: string;
+  try {
+    json = safeStorage.decryptString(readFileSync(path));
+  } catch {
+    throw new Error("Saved env values could not be decrypted");
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(json);
+  } catch {
+    return {};
+  }
+  const map = z.record(requiredEnvVarNameSchema, z.string().min(1)).safeParse(parsed);
+  return map.success ? map.data : {};
+}
+
+function writeEnvSecretMap(values: Record<string, string>): void {
+  if (!safeStorage.isEncryptionAvailable()) {
+    throw new Error("Safe storage encryption is not available");
+  }
+  const directory = app.getPath("userData");
+  mkdirSync(directory, { recursive: true });
+  writeFileSync(join(directory, ENV_FILE), safeStorage.encryptString(JSON.stringify(values)));
 }
 
 export function readApiKey(): string | null {

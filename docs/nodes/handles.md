@@ -16,6 +16,8 @@ Phase 19 does not change this table. A merge still takes and produces `text` and
 
 Phase 20 does not change this table. Text, file, folder, and MCP are still sources. A text node stores the text you type. A file node stores the dropped file's path. A folder node stores a folder path and, when wired to an agent, sets that agent's workspace to `folder` mode. An MCP node stores a stdio command or an HTTP url, plus `headerSecretId` when headers were saved. Header values are not in the workflow.
 
+Phase 21 does not change this table. A template is a saved graph of these same nodes. Export and import move that graph. They do not add a handle.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |

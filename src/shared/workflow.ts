@@ -124,6 +124,10 @@ export const workflowEdgeSchema = z.strictObject({
   targetHandle: z.string().min(1),
 });
 
+export const requiredEnvVarNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]*$/);
+
+export const requiredEnvVarsSchema = z.array(requiredEnvVarNameSchema);
+
 const workflowObjectSchema = z.strictObject({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -132,6 +136,7 @@ const workflowObjectSchema = z.strictObject({
   edges: z.array(workflowEdgeSchema),
   repositoryPath: z.string().min(1).optional(),
   budgetTokens: z.number().int().positive().optional(),
+  requiredEnvVars: requiredEnvVarsSchema.optional(),
 });
 
 export const workflowSchema = z.preprocess((value) => {
@@ -162,3 +167,4 @@ export type MergeNodeData = z.infer<typeof mergeNodeDataSchema>;
 export type WorkflowNode = z.infer<typeof workflowNodeSchema>;
 export type WorkflowEdge = z.infer<typeof workflowEdgeSchema>;
 export type Workflow = z.infer<typeof workflowSchema>;
+export type RequiredEnvVarName = z.infer<typeof requiredEnvVarNameSchema>;

@@ -44,6 +44,7 @@ type WorkflowState = {
   renameWorkflow: (name: string) => void;
   setRepositoryPath: (path: string) => void;
   setBudget: (tokens: number | null) => void;
+  setRequiredEnvVars: (names: string[]) => void;
 };
 
 function nextId(prefix: string, ids: readonly string[]): string {
@@ -200,6 +201,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       delete next.budgetTokens;
     } else {
       next.budgetTokens = tokens;
+    }
+    const parsed = workflowSchema.safeParse(next);
+    if (!parsed.success) {
+      return;
+    }
+    set({ workflow: parsed.data });
+  },
+  setRequiredEnvVars: (names) => {
+    const workflow = get().workflow;
+    const next = { ...workflow };
+    if (names.length === 0) {
+      delete next.requiredEnvVars;
+    } else {
+      next.requiredEnvVars = names;
     }
     const parsed = workflowSchema.safeParse(next);
     if (!parsed.success) {
