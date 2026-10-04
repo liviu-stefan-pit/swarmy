@@ -104,14 +104,14 @@ function mockHeight(element: Element, height: number): void {
     }) as DOMRect;
 }
 
-it("puts the Run history collapse control on the right of the row", () => {
+it("puts the collapse control on the right of the tab row", () => {
   render(<App />);
 
-  const button = screen.getByTestId("collapse-history");
-  const select = screen.getByTestId("run-history-list");
+  const button = screen.getByTestId("collapse-bottom");
+  const tab = screen.getByTestId("bottom-tab-log");
   expect(button.parentElement?.className).toContain("justify-between");
   expect(button.parentElement?.lastElementChild).toBe(button);
-  expect(select.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
+  expect(tab.compareDocumentPosition(button) & Node.DOCUMENT_POSITION_FOLLOWING).toBe(
     Node.DOCUMENT_POSITION_FOLLOWING,
   );
 });
@@ -139,15 +139,15 @@ it("Dragging the bottom handle down shortens the stack, and the stack stops befo
   expect(bottomStackHeight()).toBeLessThanOrEqual(before + 200 - 160);
 });
 
-it("Collapsing Run log hides the log text and leaves the Run log heading", async () => {
+it("Collapsing the area hides the log text, leaves the Run log tab, and the area is shorter", async () => {
   render(<App />);
 
   expect(await screen.findByTestId("run-log")).toHaveTextContent("No run yet.");
-  const before = bottomStackHeight();
+  expect(bottomStackHeight()).toBeGreaterThan(0);
 
-  fireEvent.click(screen.getByTestId("collapse-run-log"));
+  fireEvent.click(screen.getByTestId("collapse-bottom"));
 
-  expect(screen.queryByTestId("run-log")).not.toBeInTheDocument();
-  expect(screen.getByRole("heading", { name: "Run log" })).toBeInTheDocument();
-  expect(bottomStackHeight()).toBeLessThan(before);
+  expect(screen.getByTestId("run-log")).not.toBeVisible();
+  expect(screen.getByTestId("bottom-tab-log")).toBeInTheDocument();
+  expect(screen.getByTestId("bottom-stack").style.height).toBe("");
 });

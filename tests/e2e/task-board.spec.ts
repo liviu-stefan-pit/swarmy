@@ -50,6 +50,7 @@ test("a scripted tool call makes the row appear in the panel", async () => {
 
     await dropPaletteNode(page, "agent", 80, 160);
     await page.getByTestId("run-workflow").click();
+    await page.getByTestId("bottom-tab-board").click();
 
     const row = page.getByTestId("task-row");
     await expect(row).toHaveCount(1);

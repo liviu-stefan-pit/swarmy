@@ -29,16 +29,20 @@ globalThis.MonacoEnvironment = {
   },
 };
 
+const defaultDiffHeight = 240;
+
 export function DiffReview({
   path,
   original,
   modified,
   onChange,
+  height = defaultDiffHeight,
 }: {
   path: string;
   original: string;
   modified: string;
   onChange: (text: string) => void;
+  height?: number;
 }) {
   const [initialModified] = useState(modified);
   const listener = useRef<monaco.IDisposable | null>(null);
@@ -51,7 +55,7 @@ export function DiffReview({
 
   return (
     <DiffEditor
-      height="240px"
+      height={height}
       theme="vs-dark"
       language={languageFor(path)}
       original={original}

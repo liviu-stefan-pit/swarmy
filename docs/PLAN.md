@@ -42,7 +42,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 17.5 | Token use | [x] | phase-17.5 | 2026-10-04 |
 | 18 | Planner node | [x] | phase-18 | 2026-10-04 |
 | 19 | Merge node | [x] | phase-19 | 2026-10-04 |
-| 19.5 | Review layout | [ ] | | |
+| 19.5 | Review layout | [x] | phase-19.5 | 2026-10-04 |
 | 20 | Inputs and MCP | [ ] | | |
 | 21 | Templates and export | [ ] | | |
 | 22 | Triggers and notifications | [ ] | | |
@@ -58,7 +58,9 @@ Write changes and wishes here, in your own words. Phase agents must read this se
 | 2026-10-04 | Use C:\prod\scratch-repo for every test that needs a git repo. | done |
 | 2026-10-04 | I need a way to delete a node I added. A button on the node, or the Delete key. Do this after Phase 15, before Phase 16. | done |
 | 2026-10-04 | I can't resize any panel or section, or collapse it. The screen gets cluttered when I keep adding agents, and a laptop is hard to navigate. Do this after Phase 15.5, before Phase 16. | done |
-| 2026-10-04 | The space under the canvas is too small to read a diff, and resizing it while a run is waiting does not help. Before Phase 20, give the board, inbox, and history their own room. | |
+| 2026-10-04 | The space under the canvas is too small to read a diff, and resizing it while a run is waiting does not help. Before Phase 20, give the board, inbox, and history their own room. | done |
+
+Board, Inbox, History, and Run log are tabs under the canvas. One is open at a time and fills that area. A waiting approval opens the Inbox and grows a short area to at least half the space under the header. One collapse control on the tab row folds the area.
 
 Phase 12's manual test is now that walkthrough. The same rule is in Conventions, so later phases write their manual tests the same way.
 
@@ -310,6 +312,18 @@ Agents that run one after another, joined by a single edge, reuse the upstream a
 Fork checks out the commit recorded for the selected checkpoint on a new branch. The original branch stays at its tip. The original run stays in history.
 
 Why: rewinding has to remove the later files from the worktree you were looking at. Separate worktrees never held those later commits, so a checkout there would not change what you see.
+
+### D19 — One view under the canvas at a time
+
+Date: 2026-10-04. Status: accepted. Supersedes the per-section collapse in D17. The splitter, the side panels, and the icon rails in D17 stay.
+
+Board, Inbox, History, and Run log are tabs. One is open and fills the area under the canvas. The default is Run log. A waiting approval opens the Inbox. If the area is shorter than half the space between the header and the footer, it grows to that height. It does not shrink on its own. Switching away while that same approval is still waiting does not pull the view back.
+
+One collapse control on the right of the tab row folds the area to that row. Clicking a tab opens it again. The four per-section collapse controls under the canvas are gone. Palette and inspector resize are unchanged.
+
+The selected view, whether the area is collapsed, and the area's height are stored in `swarmy.panel-layout` on this PC. A saved layout from Phase 15.6 still loads. Its per-section collapse flags are ignored. Nothing is stored in the workflow file.
+
+Why: the diff editor was fixed at 240px inside a 280px stack that also held the board, the inbox, history, and the log. Dragging the handle did not give the review more lines.
 
 ## Conventions
 
@@ -1706,13 +1720,16 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 This uses the conflict workflow from Phase 19, on `C:\prod\scratch-repo`. Leave **Token budget** empty. The clone must be on `main` with a clean working tree. If `README.md` still says `left side` from the Phase 19 conflict run, that is fine. The two agents must disagree about the same line.
 
 1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
-2. Open the Phase 19 workflow named `Merge conflict`, or build it again: two **repo** agents on `C:\prod\scratch-repo`, then a **Merge** whose **Target branch** is `main`. Connect the first agent's blue **text** output to the merge **text** input, then the second agent's blue **text** output to that same input.
-3. Set the first prompt to `Change the first line of README.md to exactly: left side. Do not edit any other file.` Set the second prompt to `Change the first line of README.md to exactly: right side. Do not edit any other file.` If `README.md` already starts with `left side`, set the first prompt to `Change the first line of README.md to exactly: from the left. Do not edit any other file.` and the second to `Change the first line of README.md to exactly: from the right. Do not edit any other file.`
-4. Click **Run**. Wait until both agent pills read **completed** and **Merge** reads **waiting**.
-5. The view under the canvas is the inbox, and the other sections are not stacked on top of the diff. The diff shows `README.md` side by side, with `<<<<<<<` on the right. You can read many lines without the editor sitting in a short strip.
-6. Drag the resize handle. The diff grows and shrinks with the area. It does not stay locked at a few lines.
-7. Switch to **Board**. The board is visible and the diff is not. Switch to **History**, then back to **Inbox**. The same conflict is still there. Do not click **Approve**.
-8. In PowerShell, from `C:\prod\scratch-repo`, `Get-Content README.md` does not contain `<<<<<<<` or `|||||||`. `git status` does not show a merge in progress.
+2. Under the canvas there is one row of tabs: **Board**, **Inbox**, **History**, and **Run log**. Only one of them is open. If nothing is waiting, **Run log** is selected and it says **No run yet.** If a previous merge is still waiting, **Inbox** is selected instead. Click **History**. The run list is visible and the log is not. Close the window. Run `npm run dev` again and wait until the footer reads **Engine connected**. **History** is still selected, unless that waiting merge is still there, in which case **Inbox** opens on its own. **Nodes** and **Inspector** are the widths they were before.
+3. Open the Phase 19 workflow named `Merge conflict`, or build it again: two **repo** agents on `C:\prod\scratch-repo`, then a **Merge** whose **Target branch** is `main`. Connect the first agent's blue **text** output to the merge **text** input, then the second agent's blue **text** output to that same input.
+4. Set the first prompt to `Change the first line of README.md to exactly: left side. Do not edit any other file.` Set the second prompt to `Change the first line of README.md to exactly: right side. Do not edit any other file.` If `README.md` already starts with `left side`, set the first prompt to `Change the first line of README.md to exactly: from the left. Do not edit any other file.` and the second to `Change the first line of README.md to exactly: from the right. Do not edit any other file.`
+5. Click **Run**. Wait until both agent pills read **completed** and **Merge** reads **waiting**.
+6. The view under the canvas switches to **Inbox** on its own. The tab reads **Inbox (1)**. Board, History, and Run log are not stacked on top of the diff. The diff shows `README.md` side by side, with `<<<<<<<` on the right. You can read many lines without the editor sitting in a short strip. **Approve** and **Reject** stay under the diff.
+7. Drag the resize handle along the top of that area. The diff grows and shrinks with the area. It does not stay locked at a few lines.
+8. Click **Board**. The board is visible and the diff is not. Click **History**, then **Inbox**. The same conflict is still there. Do not click **Approve**.
+9. On the right of the tab row, click the collapse control. The diff is hidden. The four tabs stay, including **Inbox (1)**. The canvas grows. Click **Inbox**. The same conflict is back. Do not click **Approve**.
+10. Click **History**. Close the window. Run `npm run dev` again and wait until the footer reads **Engine connected**. Open `Merge conflict` if it is not already showing. The merge is still waiting, so the view is **Inbox** again, not History. The conflict is still there. Do not click **Approve**.
+11. In PowerShell, from `C:\prod\scratch-repo`, `Get-Content README.md` does not contain `<<<<<<<` or `|||||||`. `git status` does not show a merge in progress.
 
 **Prompt.**
 
@@ -1727,7 +1744,12 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- Board, Inbox, History, and Run log are tabs under the canvas (`bottom-tab-board`, `bottom-tab-inbox`, `bottom-tab-history`, `bottom-tab-log`). One view is open and fills the area. The others stay mounted but hidden, so an unsaved diff, the open history run, and a steering draft survive a switch. The default view is Run log. Decision D19.
+- A new waiting approval opens the Inbox. The Inbox tab shows the count, such as **Inbox (1)**. If the area is shorter than half the space between the header and the footer, it grows to that height. It does not shrink on its own, and switching away from the same approval does not pull the view back. With more than one approval waiting, a row of buttons picks which one fills the view.
+- The diff editor takes the height of that view, side by side, instead of a fixed 240px. **Approve** still sends the edited text. **Reject** is unchanged.
+- One collapse control, `collapse-bottom`, sits on the right of the tab row and folds the area to that row. Clicking a tab opens it again. The per-section collapse controls under the canvas are gone. The palette, the inspector, and the bottom resize handle are as Phase 15.6 left them.
+- The selected view, whether the area is collapsed, and the area's height are stored in `swarmy.panel-layout` on this PC. A saved Phase 15.6 layout still loads. Its per-section collapse flags are ignored. The workflow file is unchanged. Node docs were left as they are: this phase does not change a node type, a handle, or what you can do with a node. Phase 20 is unchanged.
+- The Run log and History collapse tests now cover the tab row. None were deleted. `npm run verify` exited 0.
 
 ---
 

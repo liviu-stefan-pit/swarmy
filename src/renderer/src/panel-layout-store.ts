@@ -9,16 +9,18 @@ const minEditorHeight = 160;
 
 export const collapsedRailWidth = 40;
 
+export const bottomViews = ["board", "inbox", "history", "log"] as const;
+
+export type BottomView = (typeof bottomViews)[number];
+
 export const defaultPanelLayout = {
   paletteWidth: 240,
   inspectorWidth: 320,
   bottomHeight: 280,
   paletteCollapsed: false,
   inspectorCollapsed: false,
-  inboxCollapsed: false,
-  historyCollapsed: false,
-  runLogCollapsed: false,
-  boardCollapsed: false,
+  bottomView: "log" as BottomView,
+  bottomCollapsed: false,
 };
 
 export type PanelLayoutState = typeof defaultPanelLayout;
@@ -29,10 +31,9 @@ type PanelLayoutStore = PanelLayoutState & {
   setBottomHeight: (height: number) => void;
   togglePalette: () => void;
   toggleInspector: () => void;
-  toggleInbox: () => void;
-  toggleHistory: () => void;
-  toggleRunLog: () => void;
-  toggleBoard: () => void;
+  showBottomView: (view: BottomView) => void;
+  toggleBottom: () => void;
+  openReview: () => void;
 };
 
 type DragEdge = "palette" | "inspector" | "bottom";
@@ -41,23 +42,11 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
-export const totalBottomWeight = 5;
-
-export function openBottomWeight(state: PanelLayoutState): number {
-  return (
-    (state.boardCollapsed ? 0 : 1) +
-    (state.inboxCollapsed ? 0 : 1) +
-    (state.historyCollapsed ? 0 : 1) +
-    (state.runLogCollapsed ? 0 : 2)
-  );
-}
-
 export function displayedBottomHeight(state: PanelLayoutState): number | undefined {
-  const weight = openBottomWeight(state);
-  if (weight === 0) {
+  if (state.bottomCollapsed) {
     return undefined;
   }
-  return Math.round((state.bottomHeight * weight) / totalBottomWeight);
+  return state.bottomHeight;
 }
 
 export function maxBottomHeight(): number {
@@ -76,16 +65,33 @@ export function maxBottomHeight(): number {
   return Math.max(bottomHeightLimits.min, Math.round(Math.min(shared, windowCap)));
 }
 
-function bottomScale(state: PanelLayoutState): number {
-  const weight = openBottomWeight(state);
-  return weight === 0 ? 1 : weight / totalBottomWeight;
+/** Half the space between the header and the footer. A new approval grows the area to at least this. */
+export function reviewFloor(): number {
+  const header = document.querySelector("header")?.getBoundingClientRect().height ?? 0;
+  const footer = document.querySelector("[data-testid='engine-status']")?.getBoundingClientRect().height ?? 0;
+  const connection = document.querySelector("details")?.getBoundingClientRect().height ?? 0;
+  return Math.round((window.innerHeight - header - footer - connection) / 2);
 }
 
-function maxStoredBottomHeight(state: PanelLayoutState): number {
-  return Math.min(bottomHeightLimits.max, maxBottomHeight() / bottomScale(state));
+function maxStoredBottomHeight(): number {
+  return Math.min(bottomHeightLimits.max, maxBottomHeight());
 }
 
-function isLayoutState(value: unknown): value is PanelLayoutState {
+function isBottomView(value: unknown): value is BottomView {
+  return bottomViews.some((view) => view === value);
+}
+
+type StoredLayout = {
+  paletteWidth: number;
+  inspectorWidth: number;
+  bottomHeight: number;
+  paletteCollapsed: boolean;
+  inspectorCollapsed: boolean;
+  bottomView?: unknown;
+  bottomCollapsed?: unknown;
+};
+
+function isLayoutState(value: unknown): value is StoredLayout {
   if (!value || typeof value !== "object") {
     return false;
   }
@@ -95,11 +101,7 @@ function isLayoutState(value: unknown): value is PanelLayoutState {
     typeof record.inspectorWidth === "number" &&
     typeof record.bottomHeight === "number" &&
     typeof record.paletteCollapsed === "boolean" &&
-    typeof record.inspectorCollapsed === "boolean" &&
-    typeof record.inboxCollapsed === "boolean" &&
-    typeof record.historyCollapsed === "boolean" &&
-    typeof record.runLogCollapsed === "boolean" &&
-    (record.boardCollapsed === undefined || typeof record.boardCollapsed === "boolean")
+    typeof record.inspectorCollapsed === "boolean"
   );
 }
 
@@ -123,10 +125,8 @@ export function readPanelLayout(): PanelLayoutState {
       ),
       paletteCollapsed: parsed.paletteCollapsed,
       inspectorCollapsed: parsed.inspectorCollapsed,
-      inboxCollapsed: parsed.inboxCollapsed,
-      historyCollapsed: parsed.historyCollapsed,
-      runLogCollapsed: parsed.runLogCollapsed,
-      boardCollapsed: parsed.boardCollapsed === true,
+      bottomView: isBottomView(parsed.bottomView) ? parsed.bottomView : defaultPanelLayout.bottomView,
+      bottomCollapsed: parsed.bottomCollapsed === true,
     };
   } catch {
     return { ...defaultPanelLayout };
@@ -140,10 +140,8 @@ function storedLayout(state: PanelLayoutStore): PanelLayoutState {
     bottomHeight: state.bottomHeight,
     paletteCollapsed: state.paletteCollapsed,
     inspectorCollapsed: state.inspectorCollapsed,
-    inboxCollapsed: state.inboxCollapsed,
-    historyCollapsed: state.historyCollapsed,
-    runLogCollapsed: state.runLogCollapsed,
-    boardCollapsed: state.boardCollapsed,
+    bottomView: state.bottomView,
+    bottomCollapsed: state.bottomCollapsed,
   };
 }
 
@@ -170,7 +168,7 @@ export const usePanelLayoutStore = create<PanelLayoutStore>((set, get) => ({
   },
   setBottomHeight: (height) => {
     commit(set, get, {
-      bottomHeight: clamp(height, bottomHeightLimits.min, maxStoredBottomHeight(get())),
+      bottomHeight: clamp(height, bottomHeightLimits.min, maxStoredBottomHeight()),
     });
   },
   togglePalette: () => {
@@ -179,17 +177,20 @@ export const usePanelLayoutStore = create<PanelLayoutStore>((set, get) => ({
   toggleInspector: () => {
     commit(set, get, { inspectorCollapsed: !get().inspectorCollapsed });
   },
-  toggleInbox: () => {
-    commit(set, get, { inboxCollapsed: !get().inboxCollapsed });
+  showBottomView: (view) => {
+    commit(set, get, { bottomView: view, bottomCollapsed: false });
   },
-  toggleHistory: () => {
-    commit(set, get, { historyCollapsed: !get().historyCollapsed });
+  toggleBottom: () => {
+    commit(set, get, { bottomCollapsed: !get().bottomCollapsed });
   },
-  toggleRunLog: () => {
-    commit(set, get, { runLogCollapsed: !get().runLogCollapsed });
-  },
-  toggleBoard: () => {
-    commit(set, get, { boardCollapsed: !get().boardCollapsed });
+  openReview: () => {
+    const cap = maxStoredBottomHeight();
+    const next = Math.min(cap, Math.max(get().bottomHeight, reviewFloor()));
+    commit(set, get, {
+      bottomView: "inbox",
+      bottomCollapsed: false,
+      bottomHeight: clamp(next, bottomHeightLimits.min, cap),
+    });
   },
 }));
 
@@ -215,15 +216,12 @@ export function startPanelDrag(
     } else if (edge === "inspector") {
       layout.setInspectorWidth(start.inspectorWidth - (move.clientX - startX));
     } else {
-      const weight = openBottomWeight(start);
-      if (weight === 0) {
+      if (start.bottomCollapsed) {
         return;
       }
-      const scale = weight / totalBottomWeight;
-      const nextDisplayed = start.bottomHeight * scale - (move.clientY - startY);
-      const minDisplayed = bottomHeightLimits.min * scale;
-      const clamped = Math.min(Math.max(nextDisplayed, minDisplayed), maxBottomHeight());
-      layout.setBottomHeight(clamped / scale);
+      const nextDisplayed = start.bottomHeight - (move.clientY - startY);
+      const clamped = Math.min(Math.max(nextDisplayed, bottomHeightLimits.min), maxBottomHeight());
+      layout.setBottomHeight(clamped);
     }
   };
   const onUp = () => {

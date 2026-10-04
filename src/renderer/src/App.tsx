@@ -2,13 +2,8 @@ import { useEffect, useState } from "react";
 import { appInfo } from "@shared/app-info";
 import type { EngineStatus } from "@shared/protocol";
 import type { ConnectionInfo, HelloInfo } from "@shared/settings";
-import { ApprovalInbox } from "./ApprovalInbox";
-import { ResizeEdge } from "./PanelChrome";
-import { RunHistory } from "./RunHistory";
-import { RunLog } from "./RunLog";
+import { BottomPanel } from "./BottomPanel";
 import { SettingsForm } from "./SettingsForm";
-import { displayedBottomHeight, maxBottomHeight, openBottomWeight, totalBottomWeight, usePanelLayoutStore } from "./panel-layout-store";
-import { TaskBoard } from "./TaskBoard";
 import { WorkflowEditor } from "./WorkflowCanvas";
 
 function engineStatusLabel(status: EngineStatus): string {
@@ -18,48 +13,6 @@ function engineStatusLabel(status: EngineStatus): string {
     case "reconnecting":
       return "Engine reconnecting";
   }
-}
-
-function BottomStack() {
-  const layout = usePanelLayoutStore();
-  const displayed = displayedBottomHeight(layout);
-
-  useEffect(() => {
-    const fit = () => {
-      const state = usePanelLayoutStore.getState();
-      const maxStored = maxBottomHeight();
-      const shown = displayedBottomHeight(state);
-      if (shown !== undefined && shown > maxStored) {
-        const weight = openBottomWeight(state);
-        state.setBottomHeight(weight === 0 ? state.bottomHeight : (maxStored * totalBottomWeight) / weight);
-      }
-    };
-    fit();
-    window.addEventListener("resize", fit);
-    return () => window.removeEventListener("resize", fit);
-  }, []);
-
-  return (
-    <div
-      data-testid="bottom-stack"
-      className="flex shrink-0 flex-col"
-      style={displayed === undefined ? undefined : { height: displayed }}
-    >
-      <ResizeEdge
-        testId="resize-bottom"
-        edge="bottom"
-        orientation="horizontal"
-        label="Resize panels under the canvas"
-        className="h-2.5 shrink-0 cursor-row-resize border-t border-zinc-800 bg-zinc-900 hover:bg-sky-700"
-      />
-      <div className={displayed === undefined ? undefined : "flex min-h-0 flex-1 flex-col overflow-auto"}>
-        <TaskBoard />
-        <ApprovalInbox />
-        <RunHistory />
-        <RunLog />
-      </div>
-    </div>
-  );
 }
 
 function errorText(error: unknown): string {
@@ -130,7 +83,7 @@ export function App() {
         <h1 className="text-lg font-semibold tracking-tight">{name}</h1>
       </header>
       <WorkflowEditor />
-      <BottomStack />
+      <BottomPanel />
       <details className="border-t border-zinc-800 px-4 py-2">
         <summary className="cursor-pointer text-sm text-zinc-300">Cursor connection</summary>
         <section className="max-w-xl space-y-4 py-3">
