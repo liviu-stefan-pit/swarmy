@@ -1,11 +1,13 @@
 import { randomUUID } from "node:crypto";
 import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
-import { Annotation, END, MemorySaver, START, StateGraph } from "@langchain/langgraph";
+import { Annotation, END, isGraphInterrupt, MemorySaver, START, StateGraph } from "@langchain/langgraph";
 import { z } from "zod";
 import type { Workflow, WorkflowNode } from "@shared/workflow";
 import { validateWorkflow } from "@shared/validate-workflow";
-import { startAgentRun } from "./agent-run";
-import type { AgentRuntime, RuntimeCustomTool } from "./runtime";
+import { startAgentRun, type AgentRunSession } from "./agent-run";
+import { openRunCatalog, type RunCatalog } from "./run-catalog";
+import type { AgentRuntime, RuntimeCustomTool, RuntimeMcpServer, SteerAck } from "./runtime";
+import { SqliteCheckpointer } from "./sqlite-checkpointer";
 import type { WorkspaceManager } from "./workspace-manager";
 
 const handoffPayloadSchema = z.object({
@@ -43,85 +45,204 @@ export interface WorkflowRunUpdate {
 }
 
 export interface WorkflowRunResult {
-  statuses: Record<string, NodeSnapshot["status"]>;
+  statuses: Record<string, WorkflowRunUpdate["status"]>;
 }
 
 const handoffInstruction =
   "When you finish, call submit_handoff. Its payload has summary, files, and blockers.";
 
-export async function runWorkflow(input: {
+export interface WorkflowRunInput {
   workflow: Workflow;
   runtime: AgentRuntime;
   apiKey: string;
   workspaces: WorkspaceManager;
   checkpointer?: BaseCheckpointSaver;
+  threadId?: string;
+  interruptAfter?: string[];
+  resume?: boolean;
   onUpdate?: (update: WorkflowRunUpdate) => void;
-}): Promise<WorkflowRunResult> {
-  const { workflow } = validateWorkflow(input.workflow);
-  const incoming = predecessors(workflow);
-  for (const node of workflow.nodes) {
-    input.onUpdate?.({ nodeId: node.id, status: "queued", log: "" });
-  }
+}
 
-  const graph = asSwarmGraph(new StateGraph(GraphState));
-  for (const node of workflow.nodes) {
-    const parents = incoming.get(node.id) ?? [];
-    graph.addNode(
-      node.id,
-      (state) => executeNode(input, workflow, node, parents, state),
-      parents.length > 1 ? { defer: true } : {},
-    );
-  }
+export interface WorkflowRunHandle {
+  threadId: string;
+  done: Promise<WorkflowRunResult>;
+  cancel(): Promise<void>;
+  cancelNode(nodeId: string): Promise<void>;
+  steer(nodeId: string, text: string): Promise<SteerAck>;
+}
 
-  const seen = new Set<string>();
-  for (const edge of workflow.edges) {
-    const key = `${edge.source}\0${edge.target}`;
-    if (seen.has(key)) {
-      continue;
+const emptyMcpServers: Record<string, RuntimeMcpServer> = {};
+
+export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
+  const threadId = input.threadId ?? randomUUID();
+  const sessions = new Map<string, AgentRunSession>();
+  const cancelledNodes = new Set<string>();
+  let runCancelled = false;
+
+  const done = executeGraph();
+
+  return {
+    threadId,
+    done,
+    cancel() {
+      runCancelled = true;
+      return cancelSessions([...sessions.values()]);
+    },
+    cancelNode(nodeId) {
+      cancelledNodes.add(nodeId);
+      const session = sessions.get(nodeId);
+      return session ? session.cancel() : Promise.resolve();
+    },
+    steer(nodeId, text) {
+      const session = sessions.get(nodeId);
+      if (!session) {
+        return Promise.reject(new Error("That agent is not running"));
+      }
+      return session.steer(text);
+    },
+  };
+
+  async function executeGraph(): Promise<WorkflowRunResult> {
+    const { workflow } = validateWorkflow(input.workflow);
+    const catalog = catalogFor(input.checkpointer);
+    catalog?.markRunning(threadId, workflow.id);
+    const context: RunContext = {
+      runtime: input.runtime,
+      apiKey: input.apiKey,
+      workspaces: input.workspaces,
+      threadId,
+      ...(catalog ? { catalog } : {}),
+      ...(input.onUpdate ? { onUpdate: input.onUpdate } : {}),
+      sessions,
+      isCancelled: () => runCancelled,
+      isNodeCancelled: (nodeId) => cancelledNodes.has(nodeId),
+    };
+
+    try {
+      const incoming = predecessors(workflow);
+      const graph = asSwarmGraph(new StateGraph(GraphState));
+      for (const node of workflow.nodes) {
+        const parents = incoming.get(node.id) ?? [];
+        graph.addNode(
+          node.id,
+          (state) => executeNode(context, workflow, node, parents, state),
+          parents.length > 1 ? { defer: true } : {},
+        );
+      }
+
+      const seen = new Set<string>();
+      for (const edge of workflow.edges) {
+        const key = `${edge.source}\0${edge.target}`;
+        if (seen.has(key)) {
+          continue;
+        }
+        seen.add(key);
+        graph.addEdge(edge.source, edge.target);
+      }
+
+      for (const node of workflow.nodes) {
+        if ((incoming.get(node.id) ?? []).length === 0) {
+          graph.addEdge(START, node.id);
+        }
+      }
+      const outgoing = new Set(workflow.edges.map((edge) => edge.source));
+      for (const node of workflow.nodes) {
+        if (!outgoing.has(node.id)) {
+          graph.addEdge(node.id, END);
+        }
+      }
+
+      const compiled = graph.compile({ checkpointer: input.checkpointer ?? new MemorySaver() });
+      const threadConfig = { configurable: { thread_id: threadId } };
+      const prior = input.resume ? (await compiled.getState(threadConfig)).values.snapshots : {};
+      for (const node of workflow.nodes) {
+        const existing = prior[node.id];
+        if (existing) {
+          input.onUpdate?.({ nodeId: node.id, status: existing.status, log: existing.handoff.summary });
+        } else {
+          input.onUpdate?.({ nodeId: node.id, status: "queued", log: "" });
+        }
+      }
+
+      let finalState: GraphValues;
+      let unfinished = false;
+      try {
+        finalState = await compiled.invoke(input.resume ? null : { snapshots: {} }, {
+          ...threadConfig,
+          ...(input.interruptAfter ? { interruptAfter: input.interruptAfter } : {}),
+        });
+        unfinished = wasInterrupted(finalState) || (await compiled.getState(threadConfig)).next.length > 0;
+      } catch (error) {
+        if (!isGraphInterrupt(error)) {
+          throw error;
+        }
+        unfinished = true;
+        finalState = (await compiled.getState(threadConfig)).values;
+      }
+
+      const statuses: WorkflowRunResult["statuses"] = {};
+      const snapshots = finalState.snapshots ?? {};
+      for (const node of workflow.nodes) {
+        const snapshot = snapshots[node.id];
+        if (snapshot) {
+          statuses[node.id] = snapshot.status;
+        } else if (unfinished) {
+          statuses[node.id] = prior[node.id]?.status ?? "queued";
+        } else {
+          statuses[node.id] = "failed";
+        }
+      }
+      if (!unfinished) {
+        catalog?.markFinished(threadId, overallStatus(statuses, runCancelled));
+      }
+      return { statuses };
+    } catch (error) {
+      catalog?.markFinished(threadId, "failed");
+      throw error;
+    } finally {
+      catalog?.close();
     }
-    seen.add(key);
-    graph.addEdge(edge.source, edge.target);
   }
+}
 
-  for (const node of workflow.nodes) {
-    if ((incoming.get(node.id) ?? []).length === 0) {
-      graph.addEdge(START, node.id);
-    }
-  }
-  const outgoing = new Set(workflow.edges.map((edge) => edge.source));
-  for (const node of workflow.nodes) {
-    if (!outgoing.has(node.id)) {
-      graph.addEdge(node.id, END);
-    }
-  }
+export function runWorkflow(input: WorkflowRunInput): Promise<WorkflowRunResult> {
+  return startWorkflowRun(input).done;
+}
 
-  const compiled = graph.compile({ checkpointer: input.checkpointer ?? new MemorySaver() });
-  const finalState = await compiled.invoke(
-    { snapshots: {} },
-    { configurable: { thread_id: randomUUID() } },
-  );
+export function resumeWorkflow(input: WorkflowRunInput & { threadId: string }): Promise<WorkflowRunResult> {
+  return startWorkflowRun({ ...input, resume: true }).done;
+}
 
-  const statuses: WorkflowRunResult["statuses"] = {};
-  for (const node of workflow.nodes) {
-    statuses[node.id] = finalState.snapshots[node.id]?.status ?? "failed";
-  }
-  return { statuses };
+interface RunContext {
+  runtime: AgentRuntime;
+  apiKey: string;
+  workspaces: WorkspaceManager;
+  threadId: string;
+  catalog?: RunCatalog;
+  onUpdate?: (update: WorkflowRunUpdate) => void;
+  sessions: Map<string, AgentRunSession>;
+  isCancelled: () => boolean;
+  isNodeCancelled: (nodeId: string) => boolean;
 }
 
 async function executeNode(
-  input: {
-    runtime: AgentRuntime;
-    apiKey: string;
-    workspaces: WorkspaceManager;
-    onUpdate?: (update: WorkflowRunUpdate) => void;
-  },
+  input: RunContext,
   workflow: Workflow,
   node: WorkflowNode,
   parents: readonly string[],
   state: GraphValues,
 ): Promise<{ snapshots: Record<string, NodeSnapshot> }> {
+  if (input.isCancelled() || input.isNodeCancelled(node.id)) {
+    return cancelledSnapshot(input, node.id);
+  }
+
   const upstream = parents.map((id) => state.snapshots[id]);
   if (upstream.some((snapshot) => !snapshot || snapshot.status !== "completed")) {
+    const cancelled =
+      input.isCancelled() || upstream.some((snapshot) => snapshot?.status === "cancelled");
+    if (cancelled) {
+      return cancelledSnapshot(input, node.id);
+    }
     const handoff: Handoff = {
       kind: "unstructured",
       summary: "An upstream node failed.",
@@ -164,7 +285,7 @@ async function executeNode(
   try {
     const mode = node.data.workspaceMode ?? "managed";
     workspace = await input.workspaces.provision({
-      id: workspaceId(node.id),
+      id: workspaceId(input.threadId, node.id),
       mode,
       ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
       ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
@@ -193,22 +314,33 @@ async function executeNode(
     };
 
     const prompt = agentPrompt(node.data.taskPrompt ?? "", completed.map((snapshot) => snapshot.handoff));
-    const outcome = await startAgentRun({
+    const savedAgentId = input.catalog?.agentId(input.threadId, node.id);
+    const session = startAgentRun({
       runtime: input.runtime,
       request: {
         apiKey: input.apiKey,
         cwd: workspacePath,
         prompt,
         customTools: { submit_handoff: submitHandoff },
+        mcpServers: emptyMcpServers,
         ...(node.data.modelId ? { modelId: node.data.modelId } : {}),
         ...(node.data.systemPrompt !== undefined ? { systemPrompt: node.data.systemPrompt } : {}),
         ...(node.data.tools !== undefined ? { tools: node.data.tools } : {}),
         ...(node.data.disallowedTools !== undefined ? { disallowedTools: node.data.disallowedTools } : {}),
+        ...(savedAgentId ? { agentId: savedAgentId } : {}),
+      },
+      onAgent(agentId) {
+        input.catalog?.rememberAgent(input.threadId, node.id, agentId);
       },
       onUpdate(update) {
         report(update.status, update.log, workspacePath);
       },
-    }).done;
+    });
+    input.sessions.set(node.id, session);
+    if (input.isCancelled() || input.isNodeCancelled(node.id)) {
+      await session.cancel();
+    }
+    const outcome = await session.done;
 
     const handoff: Handoff = captured ?? {
       kind: "unstructured",
@@ -223,6 +355,7 @@ async function executeNode(
     report("failed", message);
     return { snapshots: { [node.id]: { status: "failed", handoff } } };
   } finally {
+    input.sessions.delete(node.id);
     if (workspace) {
       await input.workspaces.teardown(workspace).catch(() => undefined);
     }
@@ -236,12 +369,18 @@ interface SwarmGraph {
     options?: { defer?: boolean },
   ): void;
   addEdge(start: string, end: string): void;
-  compile(options: { checkpointer: BaseCheckpointSaver }): {
-    invoke(
-      input: { snapshots: Record<string, NodeSnapshot> },
-      config: { configurable: { thread_id: string } },
-    ): Promise<GraphValues>;
-  };
+  compile(options: { checkpointer: BaseCheckpointSaver }): CompiledSwarm;
+}
+
+interface CompiledSwarm {
+  invoke(
+    input: { snapshots: Record<string, NodeSnapshot> } | null,
+    config: { configurable: { thread_id: string }; interruptAfter?: string[] },
+  ): Promise<GraphValues>;
+  getState(config: { configurable: { thread_id: string } }): Promise<{
+    next: string[];
+    values: GraphValues;
+  }>;
 }
 
 function asSwarmGraph(graph: object): SwarmGraph {
@@ -290,7 +429,49 @@ function predecessors(workflow: Workflow): Map<string, string[]> {
   return incoming;
 }
 
-function workspaceId(nodeId: string): string {
-  const safe = nodeId.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "agent";
-  return `${safe}-${randomUUID()}`;
+function workspaceId(threadId: string, nodeId: string): string {
+  const safe = `${threadId}-${nodeId}`.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "");
+  return safe.length > 0 ? safe : "agent";
+}
+
+function cancelledSnapshot(
+  input: RunContext,
+  nodeId: string,
+): { snapshots: Record<string, NodeSnapshot> } {
+  const handoff: Handoff = {
+    kind: "unstructured",
+    summary: "The run was cancelled.",
+    files: [],
+    blockers: [],
+  };
+  input.onUpdate?.({ nodeId, status: "cancelled", log: handoff.summary });
+  return { snapshots: { [nodeId]: { status: "cancelled", handoff } } };
+}
+
+function cancelSessions(sessions: readonly AgentRunSession[]): Promise<void> {
+  return Promise.all(sessions.map((session) => session.cancel())).then(() => undefined);
+}
+
+function catalogFor(checkpointer: BaseCheckpointSaver | undefined): RunCatalog | undefined {
+  if (checkpointer instanceof SqliteCheckpointer) {
+    return openRunCatalog(checkpointer.databasePath);
+  }
+  return undefined;
+}
+
+function wasInterrupted(state: object): boolean {
+  return "__interrupt__" in state;
+}
+
+function overallStatus(
+  statuses: WorkflowRunResult["statuses"],
+  cancelled: boolean,
+): "completed" | "cancelled" | "failed" {
+  if (cancelled || Object.values(statuses).some((status) => status === "cancelled")) {
+    return "cancelled";
+  }
+  if (Object.values(statuses).some((status) => status === "failed")) {
+    return "failed";
+  }
+  return "completed";
 }

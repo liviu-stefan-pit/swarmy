@@ -83,6 +83,18 @@ const swarmy: SwarmyApi = {
     cancel() {
       return Promise.resolve();
     },
+    cancelWorkflow() {
+      return Promise.resolve();
+    },
+    steer() {
+      return Promise.resolve("complete_delivered");
+    },
+    unfinished() {
+      return Promise.resolve(null);
+    },
+    resume() {
+      return Promise.resolve({ statuses: {} });
+    },
     onUpdate() {
       return () => undefined;
     },

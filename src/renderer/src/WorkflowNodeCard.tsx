@@ -14,7 +14,7 @@ const handleColor: Record<HandleDataType, string> = {
   mcp: "#c4b5fd",
 };
 
-type FlowNodeData = { label: string; status?: NodeRunStatus; busy?: boolean; workflowRunning?: boolean };
+type FlowNodeData = { label: string; status?: NodeRunStatus; busy?: boolean };
 
 const statusClass: Record<NodeRunStatus, string> = {
   idle: "bg-zinc-800 text-zinc-300",
@@ -122,14 +122,14 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
           <button
             type="button"
             data-testid="cancel-run"
-            disabled={status !== "running" || data.workflowRunning}
+            disabled={status !== "running"}
             className="rounded border border-zinc-600 px-2 py-0.5 text-xs hover:bg-zinc-800 disabled:opacity-50"
             onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
               event.stopPropagation();
             }}
             onClick={(event: MouseEvent<HTMLButtonElement>) => {
               event.stopPropagation();
-              void useRunStore.getState().cancel();
+              void useRunStore.getState().cancel(id);
             }}
           >
             Cancel

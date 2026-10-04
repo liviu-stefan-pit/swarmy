@@ -34,6 +34,13 @@ export interface RuntimeRunResult {
 
 export type SteerAck = "complete_delivered" | "revert_to_followup";
 
+export interface RuntimeMcpServer {
+  command?: string;
+  args?: string[];
+  url?: string;
+  headers?: Record<string, string>;
+}
+
 export interface RuntimeRun {
   readonly id: string;
   stream(): AsyncIterable<RuntimeEvent>;
@@ -70,6 +77,11 @@ export interface CreateAgentRequest {
   tools?: string[];
   disallowedTools?: string[];
   customTools?: Record<string, RuntimeCustomTool>;
+  mcpServers?: Record<string, RuntimeMcpServer>;
+}
+
+export interface ResumeAgentRequest extends CreateAgentRequest {
+  agentId: string;
 }
 
 export interface AgentRuntime {
@@ -77,6 +89,7 @@ export interface AgentRuntime {
   models(apiKey: string): Promise<RuntimeModel[]>;
   hello(request: HelloRequest): Promise<HelloResult>;
   create(request: CreateAgentRequest): Promise<RuntimeAgent>;
+  resume(request: ResumeAgentRequest): Promise<RuntimeAgent>;
 }
 
 export const HELLO_PROMPT =

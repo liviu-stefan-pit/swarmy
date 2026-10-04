@@ -1,9 +1,17 @@
-import type { AgentRuntime, CreateAgentRequest, RuntimeEvent, RuntimeRun, RuntimeRunResult } from "./runtime";
+import type {
+  AgentRuntime,
+  CreateAgentRequest,
+  RuntimeEvent,
+  RuntimeRun,
+  RuntimeRunResult,
+  SteerAck,
+} from "./runtime";
 
 export type AgentNodeStatus = "running" | "completed" | "failed" | "cancelled";
 
 export interface AgentRunRequest extends CreateAgentRequest {
   prompt: string;
+  agentId?: string;
 }
 
 export interface AgentRunOutcome {
@@ -21,6 +29,7 @@ export interface AgentRunUpdate {
 export interface AgentRunSession {
   done: Promise<AgentRunOutcome>;
   cancel(): Promise<void>;
+  steer(text: string): Promise<SteerAck>;
   until(match: (event: RuntimeEvent) => boolean): Promise<void>;
 }
 
@@ -28,18 +37,32 @@ export function startAgentRun(input: {
   runtime: AgentRuntime;
   request: AgentRunRequest;
   onUpdate?: (update: AgentRunUpdate) => void;
+  onAgent?: (agentId: string) => void;
 }): AgentRunSession {
   const seen: RuntimeEvent[] = [];
   const waiters = new Set<(event: RuntimeEvent) => void>();
   let run: RuntimeRun | undefined;
+  let log = "";
   let cancelRequested = false;
   let canceling: Promise<void> | undefined;
+  let pendingFollowup: string | undefined;
+  let resolveRun: ((ready: RuntimeRun) => void) | undefined;
+  let rejectRun: ((error: Error) => void) | undefined;
+  const runReady = new Promise<RuntimeRun>((resolve, reject) => {
+    resolveRun = resolve;
+    rejectRun = reject;
+  });
+  runReady.catch(() => undefined);
 
   const publish = (event: RuntimeEvent): void => {
     seen.push(event);
     for (const waiter of waiters) {
       waiter(event);
     }
+  };
+
+  const report = (status: AgentNodeStatus, nextLog: string): void => {
+    input.onUpdate?.({ status, log: nextLog });
   };
 
   const done = execute();
@@ -53,6 +76,17 @@ export function startAgentRun(input: {
       }
       canceling ??= run.cancel();
       return canceling;
+    },
+    async steer(text) {
+      const ready = await runReady;
+      const ack = await ready.steer(text);
+      if (ack === "revert_to_followup") {
+        pendingFollowup = text;
+        return ack;
+      }
+      pendingFollowup = undefined;
+      note("Steering delivered");
+      return ack;
     },
     until(match) {
       if (seen.some(match)) {
@@ -71,15 +105,16 @@ export function startAgentRun(input: {
 
   async function execute(): Promise<AgentRunOutcome> {
     let agent: Awaited<ReturnType<AgentRuntime["create"]>> | undefined;
-    let log = "";
-    const report = (status: AgentNodeStatus, nextLog: string): void => {
-      input.onUpdate?.({ status, log: nextLog });
-    };
 
     try {
       report("running", log);
-      agent = await input.runtime.create(createRequest(input.request));
+      const launch = createRequest(input.request);
+      agent = input.request.agentId
+        ? await input.runtime.resume({ ...launch, agentId: input.request.agentId })
+        : await input.runtime.create(launch);
+      input.onAgent?.(agent.agentId);
       if (cancelRequested) {
+        settleRun(new Error("Run was cancelled"));
         const outcome: AgentRunOutcome = { status: "cancelled", log, text: "" };
         report("cancelled", log);
         return outcome;
@@ -87,6 +122,7 @@ export function startAgentRun(input: {
 
       const prompt = input.request.prompt.trim().length > 0 ? input.request.prompt : "Reply.";
       run = await agent.send(prompt);
+      resolveRun?.(run);
       if (cancelRequested) {
         await run.cancel();
       }
@@ -98,8 +134,21 @@ export function startAgentRun(input: {
       }
 
       const result = await run.wait();
+      if (result.status === "finished" && pendingFollowup) {
+        const followup = pendingFollowup;
+        pendingFollowup = undefined;
+        note("Steering sent as a follow-up");
+        const follow = await agent.send(followup);
+        for await (const event of follow.stream()) {
+          log = appendEvent(log, event);
+          publish(event);
+          report("running", log);
+        }
+        return finish(await follow.wait(), log, report);
+      }
       return finish(result, log, report);
     } catch (error) {
+      settleRun(error instanceof Error ? error : new Error("Run did not start"));
       const message = error instanceof Error && error.message ? error.message : "Run did not start";
       const failedLog = log.length > 0 ? `${log}\nRun did not start: ${message}` : `Run did not start: ${message}`;
       report("failed", failedLog);
@@ -107,6 +156,20 @@ export function startAgentRun(input: {
     } finally {
       await agent?.dispose();
     }
+  }
+
+  function settleRun(error: Error): void {
+    if (!run) {
+      rejectRun?.(error);
+    }
+  }
+
+  function note(message: string): void {
+    log = appendLine(log, message);
+    if (!log.endsWith("\n")) {
+      log = `${log}\n`;
+    }
+    report("running", log);
   }
 }
 
@@ -142,6 +205,7 @@ function createRequest(request: AgentRunRequest): CreateAgentRequest {
     ...(request.tools !== undefined ? { tools: request.tools } : {}),
     ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
     ...(request.customTools !== undefined ? { customTools: request.customTools } : {}),
+    ...(request.mcpServers !== undefined ? { mcpServers: request.mcpServers } : {}),
   };
 }
 

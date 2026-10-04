@@ -6,7 +6,8 @@ import { parseEngineMessage, type EngineMessage } from "@shared/protocol";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
-import { runWorkflow } from "./orchestrator";
+import { startWorkflowRun, type WorkflowRunHandle } from "./orchestrator";
+import { unfinishedThread } from "./run-catalog";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
 import { createWorkspaceManager, type AgentWorkspace, type WorkspaceManager } from "./workspace-manager";
@@ -44,6 +45,7 @@ export function attachEngine(
   const starting = new Set<string>();
   const pendingCancels = new Set<string>();
   let graphRunning = false;
+  let workflowHandle: WorkflowRunHandle | undefined;
   let checkpoints: SqliteCheckpointer | undefined;
   const getCheckpointer = (): SqliteCheckpointer => {
     checkpoints ??= SqliteCheckpointer.open(join(workflowDataDir(), "swarmy.db"));
@@ -91,15 +93,36 @@ export function attachEngine(
       return;
     }
 
-    if (message.type === "workflow.run") {
+    if (message.type === "workflow.run" || message.type === "workflow.resume") {
       void answerWorkflowRun(port, getRuntime(), getWorkspaces, getCheckpointer, message, () => graphRunning || activeRuns.size > 0, (running) => {
         graphRunning = running;
+      }, (handle) => {
+        workflowHandle = handle;
       });
       return;
     }
 
     if (message.type === "run.cancel") {
+      if (workflowHandle) {
+        void answerWorkflowNodeCancel(port, message, workflowHandle);
+        return;
+      }
       void answerCancel(port, message, activeRuns, starting, pendingCancels);
+      return;
+    }
+
+    if (message.type === "workflow.cancel") {
+      void answerWorkflowCancel(port, message, workflowHandle);
+      return;
+    }
+
+    if (message.type === "run.steer") {
+      void answerSteer(port, message, activeRuns, workflowHandle);
+      return;
+    }
+
+    if (message.type === "run.unfinished") {
+      answerUnfinished(port, message, getCheckpointer);
       return;
     }
 
@@ -249,9 +272,10 @@ async function answerWorkflowRun(
   runtimePromise: Promise<AgentRuntime>,
   getWorkspaces: () => WorkspaceManager,
   getCheckpointer: () => SqliteCheckpointer,
-  message: Extract<EngineMessage, { type: "workflow.run" }>,
+  message: Extract<EngineMessage, { type: "workflow.run" | "workflow.resume" }>,
   isBusy: () => boolean,
   setRunning: (running: boolean) => void,
+  setHandle: (handle: WorkflowRunHandle | undefined) => void,
 ): Promise<void> {
   if (isBusy()) {
     port.postMessage({
@@ -265,12 +289,13 @@ async function answerWorkflowRun(
   setRunning(true);
   try {
     const runtime = await runtimePromise;
-    const result = await runWorkflow({
+    const handle = startWorkflowRun({
       workflow: message.workflow,
       runtime,
       apiKey: message.apiKey,
       workspaces: getWorkspaces(),
       checkpointer: getCheckpointer(),
+      ...(message.type === "workflow.resume" ? { resume: true, threadId: message.threadId } : {}),
       onUpdate(update) {
         port.postMessage({
           type: "run.update",
@@ -281,6 +306,8 @@ async function answerWorkflowRun(
         });
       },
     });
+    setHandle(handle);
+    const result = await handle.done;
     port.postMessage({
       type: "workflow.runDone",
       id: message.id,
@@ -294,7 +321,75 @@ async function answerWorkflowRun(
       message: text.length > 0 ? text : "The workflow run failed",
     });
   } finally {
+    setHandle(undefined);
     setRunning(false);
+  }
+}
+
+async function answerWorkflowNodeCancel(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.cancel" }>,
+  handle: WorkflowRunHandle,
+): Promise<void> {
+  try {
+    await handle.cancelNode(message.nodeId);
+    port.postMessage({ type: "run.cancelResult", id: message.id });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Cancel failed";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  }
+}
+
+async function answerWorkflowCancel(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "workflow.cancel" }>,
+  handle: WorkflowRunHandle | undefined,
+): Promise<void> {
+  try {
+    await handle?.cancel();
+    port.postMessage({ type: "workflow.cancelResult", id: message.id });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Cancel failed";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  }
+}
+
+async function answerSteer(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.steer" }>,
+  activeRuns: Map<string, AgentRunSession>,
+  handle: WorkflowRunHandle | undefined,
+): Promise<void> {
+  try {
+    const session = activeRuns.get(message.nodeId);
+    const delivery = session
+      ? await session.steer(message.text)
+      : await handle?.steer(message.nodeId, message.text);
+    if (!delivery) {
+      throw new Error("That agent is not running");
+    }
+    port.postMessage({ type: "run.steerResult", id: message.id, delivery });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Steer failed";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  }
+}
+
+function answerUnfinished(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.unfinished" }>,
+  getCheckpointer: () => SqliteCheckpointer,
+): void {
+  try {
+    const threadId = unfinishedThread(getCheckpointer().databasePath, message.workflowId);
+    port.postMessage({
+      type: "run.unfinishedResult",
+      id: message.id,
+      ...(threadId ? { threadId } : {}),
+    });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not look up the run";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
   }
 }
 

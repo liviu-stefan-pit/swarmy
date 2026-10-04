@@ -34,7 +34,11 @@ const resultByRequest = {
   "workflow.delete": "workflow.deleteResult",
   "run.start": "run.done",
   "run.cancel": "run.cancelResult",
+  "run.steer": "run.steerResult",
+  "run.unfinished": "run.unfinishedResult",
   "workflow.run": "workflow.runDone",
+  "workflow.resume": "workflow.runDone",
+  "workflow.cancel": "workflow.cancelResult",
 } as const;
 
 type EngineRequestType = keyof typeof resultByRequest;
@@ -226,8 +230,11 @@ function isEngineReply(message: EngineMessage): message is EngineSuccess | Engin
     message.type === "workflow.failed" ||
     message.type === "run.done" ||
     message.type === "run.cancelResult" ||
+    message.type === "run.steerResult" ||
+    message.type === "run.unfinishedResult" ||
     message.type === "run.failed" ||
-    message.type === "workflow.runDone"
+    message.type === "workflow.runDone" ||
+    message.type === "workflow.cancelResult"
   );
 }
 
@@ -240,9 +247,14 @@ function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessag
     case "run.start":
       return { timeoutMs: RUN_TIMEOUT_MS, timeoutMessage: "Agent run timed out" };
     case "workflow.run":
+    case "workflow.resume":
       return { timeoutMs: RUN_TIMEOUT_MS, timeoutMessage: "Workflow run timed out" };
     case "run.cancel":
+    case "workflow.cancel":
+    case "run.steer":
       return { timeoutMs: CANCEL_TIMEOUT_MS, timeoutMessage: "Cancel timed out" };
+    case "run.unfinished":
+      return { timeoutMs: WORKFLOW_TIMEOUT_MS, timeoutMessage: "Workflow request timed out" };
     case "workflow.delete":
     case "workflow.list":
     case "workflow.load":

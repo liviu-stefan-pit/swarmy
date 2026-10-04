@@ -3,6 +3,7 @@ import type {
   CreateAgentRequest,
   HelloRequest,
   HelloResult,
+  ResumeAgentRequest,
   RuntimeAccount,
   RuntimeAgent,
   RuntimeCustomTool,
@@ -20,6 +21,7 @@ export interface FakePromptScript {
   error?: string;
   hold?: boolean;
   handoff?: Record<string, unknown>;
+  steer?: SteerAck;
 }
 
 export interface FakeRuntimeScript {
@@ -36,6 +38,7 @@ export class FakeRuntime implements AgentRuntime {
   disposeCount = 0;
   readonly sentPrompts: string[] = [];
   readonly finishedPrompts: string[] = [];
+  readonly resumes: ResumeAgentRequest[] = [];
   private nextRunId = 0;
   private readonly heldRuns: FakeRun[] = [];
 
@@ -75,6 +78,11 @@ export class FakeRuntime implements AgentRuntime {
   }
 
   create(request: CreateAgentRequest): Promise<RuntimeAgent> {
+    return Promise.resolve(new FakeAgent(this, request.customTools));
+  }
+
+  resume(request: ResumeAgentRequest): Promise<RuntimeAgent> {
+    this.resumes.push(request);
     return Promise.resolve(new FakeAgent(this, request.customTools));
   }
 
@@ -196,6 +204,6 @@ export class FakeRun implements RuntimeRun {
 
   steer(text: string): Promise<SteerAck> {
     void text;
-    return Promise.resolve("complete_delivered");
+    return Promise.resolve(this.script.steer ?? "complete_delivered");
   }
 }

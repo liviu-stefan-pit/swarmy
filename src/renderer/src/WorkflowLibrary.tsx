@@ -65,19 +65,53 @@ function upsertSummary(current: readonly WorkflowSummary[], summary: WorkflowSum
 }
 
 function RunWorkflowButton() {
+  const workflowId = useWorkflowStore((state) => state.workflow.id);
   const running = useRunStore((state) => state.workflowRunning || state.activeNodeId !== null);
+  const workflowRunning = useRunStore((state) => state.workflowRunning);
+  const unfinishedThreadId = useRunStore((state) => state.unfinishedThreadId);
+
+  useEffect(() => {
+    void useRunStore.getState().refreshUnfinished(workflowId);
+  }, [workflowId]);
+
   return (
-    <button
-      type="button"
-      data-testid="run-workflow"
-      disabled={running}
-      className="rounded border border-sky-700 px-3 py-1.5 text-sm hover:bg-sky-950 disabled:opacity-50"
-      onClick={() => {
-        void useRunStore.getState().startWorkflow();
-      }}
-    >
-      Run
-    </button>
+    <>
+      <button
+        type="button"
+        data-testid="run-workflow"
+        disabled={running}
+        className="rounded border border-sky-700 px-3 py-1.5 text-sm hover:bg-sky-950 disabled:opacity-50"
+        onClick={() => {
+          void useRunStore.getState().startWorkflow();
+        }}
+      >
+        Run
+      </button>
+      {workflowRunning ? (
+        <button
+          type="button"
+          data-testid="cancel-workflow"
+          className="rounded border border-amber-700 px-3 py-1.5 text-sm hover:bg-amber-950"
+          onClick={() => {
+            void useRunStore.getState().cancelWorkflow();
+          }}
+        >
+          Cancel run
+        </button>
+      ) : null}
+      {unfinishedThreadId && !running ? (
+        <button
+          type="button"
+          data-testid="resume-workflow"
+          className="rounded border border-emerald-700 px-3 py-1.5 text-sm hover:bg-emerald-950"
+          onClick={() => {
+            void useRunStore.getState().resume();
+          }}
+        >
+          Resume
+        </button>
+      ) : null}
+    </>
   );
 }
 

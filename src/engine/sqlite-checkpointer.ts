@@ -34,12 +34,15 @@ interface WriteRow {
 export class SqliteCheckpointer extends BaseCheckpointSaver {
   private ready = false;
 
-  private constructor(private readonly db: SqliteDatabase) {
+  private constructor(
+    private readonly db: SqliteDatabase,
+    readonly databasePath: string,
+  ) {
     super();
   }
 
   static open(path: string): SqliteCheckpointer {
-    return new SqliteCheckpointer(openSqliteDatabase(path));
+    return new SqliteCheckpointer(openSqliteDatabase(path), path);
   }
 
   close(): void {

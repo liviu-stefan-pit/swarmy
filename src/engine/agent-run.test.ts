@@ -90,3 +90,73 @@ it("cancel before the fake finishes yields cancelled", async () => {
 
   await expect(session.done).resolves.toMatchObject({ status: "cancelled" });
 });
+
+it("sends one follow-up after revert_to_followup and none after complete_delivered", async () => {
+  const followupRuntime = new FakeRuntime({
+    ...baseScript,
+    prompts: {
+      "Do the task": {
+        chunks: ["working"],
+        hold: true,
+        result: "done",
+        steer: "revert_to_followup",
+      },
+      "Answer in one sentence.": { chunks: ["short"], result: "short" },
+    },
+  });
+  const followup = startAgentRun({
+    runtime: followupRuntime,
+    request: { ...request, prompt: "Do the task" },
+  });
+
+  try {
+    await followup.until((event) => event.type === "assistant" && event.text === "working");
+    const steer = (followup as { steer?: (text: string) => Promise<string> }).steer;
+    expect(typeof steer).toBe("function");
+    if (!steer) {
+      return;
+    }
+    await expect(steer("Answer in one sentence.")).resolves.toBe("revert_to_followup");
+    followupRuntime.releaseHeld();
+    const outcome = await followup.done;
+    expect(followupRuntime.sentPrompts).toEqual(["Do the task", "Answer in one sentence."]);
+    expect(outcome.log).toContain("Steering sent as a follow-up");
+  } finally {
+    followupRuntime.releaseHeld();
+    await followup.done.catch(() => undefined);
+  }
+
+  const deliveredRuntime = new FakeRuntime({
+    ...baseScript,
+    prompts: {
+      "Do the task": {
+        chunks: ["working"],
+        hold: true,
+        result: "done",
+        steer: "complete_delivered",
+      },
+    },
+  });
+  const delivered = startAgentRun({
+    runtime: deliveredRuntime,
+    request: { ...request, prompt: "Do the task" },
+  });
+
+  try {
+    await delivered.until((event) => event.type === "assistant" && event.text === "working");
+    const steer = (delivered as { steer?: (text: string) => Promise<string> }).steer;
+    expect(typeof steer).toBe("function");
+    if (!steer) {
+      return;
+    }
+    await expect(steer("Answer in one sentence.")).resolves.toBe("complete_delivered");
+    deliveredRuntime.releaseHeld();
+    const outcome = await delivered.done;
+    expect(deliveredRuntime.sentPrompts).toEqual(["Do the task"]);
+    expect(outcome.log).toContain("Steering delivered");
+    expect(outcome.log).not.toContain("follow-up");
+  } finally {
+    deliveredRuntime.releaseHeld();
+    await delivered.done.catch(() => undefined);
+  }
+});

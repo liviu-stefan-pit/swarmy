@@ -100,7 +100,9 @@ class NodeWorkspaceManager implements WorkspaceManager {
     const path = join(this.rootDir, "wt", request.id);
     const branch = `swarm/${request.id}`;
     await mkdir(join(this.rootDir, "wt"), { recursive: true });
-    await this.runGit(request.id, ["-C", resolvedRepo, "worktree", "add", "-b", branch, path]);
+    if (!(await directoryExists(path))) {
+      await this.runGit(request.id, ["-C", resolvedRepo, "worktree", "add", "-b", branch, path]);
+    }
     return {
       id: request.id,
       mode: "repo",
@@ -113,7 +115,9 @@ class NodeWorkspaceManager implements WorkspaceManager {
   private async provisionManaged(request: WorkspaceProvision): Promise<AgentWorkspace> {
     const path = join(this.rootDir, "managed", request.id);
     await mkdir(path, { recursive: true });
-    await this.runGit(request.id, ["-C", path, "init", "-b", "main"]);
+    if (!(await directoryExists(join(path, ".git")))) {
+      await this.runGit(request.id, ["-C", path, "init", "-b", "main"]);
+    }
     return { id: request.id, mode: "managed", path };
   }
 
@@ -228,6 +232,18 @@ class NodeWorkspaceManager implements WorkspaceManager {
         reject(new Error(stderr.trim() || `git ${args.join(" ")} failed`));
       });
     });
+  }
+}
+
+async function directoryExists(path: string): Promise<boolean> {
+  try {
+    const info = await stat(path);
+    return info.isDirectory();
+  } catch (error) {
+    if (isEnoent(error)) {
+      return false;
+    }
+    throw error;
   }
 }
 

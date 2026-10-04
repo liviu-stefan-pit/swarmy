@@ -153,6 +153,19 @@ export const runCancelResultMessageSchema = z.object({
   id: z.string().min(1),
 });
 
+export const runSteerMessageSchema = z.object({
+  type: z.literal("run.steer"),
+  id: z.string().min(1),
+  nodeId: z.string().min(1),
+  text: z.string().min(1),
+});
+
+export const runSteerResultMessageSchema = z.object({
+  type: z.literal("run.steerResult"),
+  id: z.string().min(1),
+  delivery: z.enum(["complete_delivered", "revert_to_followup"]),
+});
+
 export const runFailedMessageSchema = z.object({
   type: z.literal("run.failed"),
   id: z.string().min(1),
@@ -170,6 +183,36 @@ export const workflowRunDoneMessageSchema = z.object({
   type: z.literal("workflow.runDone"),
   id: z.string().min(1),
   statuses: z.record(z.string(), nodeRunStatusSchema),
+});
+
+export const workflowCancelMessageSchema = z.object({
+  type: z.literal("workflow.cancel"),
+  id: z.string().min(1),
+});
+
+export const workflowCancelResultMessageSchema = z.object({
+  type: z.literal("workflow.cancelResult"),
+  id: z.string().min(1),
+});
+
+export const runUnfinishedMessageSchema = z.object({
+  type: z.literal("run.unfinished"),
+  id: z.string().min(1),
+  workflowId: z.string().min(1),
+});
+
+export const runUnfinishedResultMessageSchema = z.object({
+  type: z.literal("run.unfinishedResult"),
+  id: z.string().min(1),
+  threadId: z.string().min(1).optional(),
+});
+
+export const workflowResumeMessageSchema = z.object({
+  type: z.literal("workflow.resume"),
+  id: z.string().min(1),
+  workflow: workflowSchema,
+  apiKey: z.string().min(1),
+  threadId: z.string().min(1),
 });
 
 export const engineMessageSchema = z.discriminatedUnion("type", [
@@ -197,9 +240,16 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   runDoneMessageSchema,
   runCancelMessageSchema,
   runCancelResultMessageSchema,
+  runSteerMessageSchema,
+  runSteerResultMessageSchema,
   runFailedMessageSchema,
   workflowRunMessageSchema,
   workflowRunDoneMessageSchema,
+  workflowCancelMessageSchema,
+  workflowCancelResultMessageSchema,
+  runUnfinishedMessageSchema,
+  runUnfinishedResultMessageSchema,
+  workflowResumeMessageSchema,
 ]);
 
 export type EngineMessage = z.infer<typeof engineMessageSchema>;

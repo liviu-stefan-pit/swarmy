@@ -72,9 +72,7 @@ function FlowSurface() {
   const setViewport = useWorkflowStore((state) => state.setViewport);
   const initialViewport = useMemo(() => useWorkflowStore.getState().workflow.viewport, []);
 
-  const flowNodes = useMemo<
-    Node<{ label: string; status: NodeRunStatus; busy: boolean; workflowRunning: boolean }>[]
-  >(
+  const flowNodes = useMemo<Node<{ label: string; status: NodeRunStatus; busy: boolean }>[]>(
     () =>
       nodes.map((node) => ({
         id: node.id,
@@ -84,11 +82,10 @@ function FlowSurface() {
           label: node.data.label,
           status: statusByNode[node.id] ?? "idle",
           busy: runBusy,
-          workflowRunning,
         },
         selected: node.id === selectedNodeId,
       })),
-    [nodes, runBusy, selectedNodeId, statusByNode, workflowRunning],
+    [nodes, runBusy, selectedNodeId, statusByNode],
   );
 
   const flowEdges = useMemo<Edge[]>(

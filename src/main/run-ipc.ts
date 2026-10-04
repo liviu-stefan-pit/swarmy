@@ -5,7 +5,15 @@ import {
   runCancelPayloadSchema,
   runStartChannel,
   runStartPayloadSchema,
+  runSteerChannel,
+  runSteerPayloadSchema,
+  runUnfinishedChannel,
+  runUnfinishedPayloadSchema,
   runUpdateSchema,
+  steerDeliverySchema,
+  workflowCancelChannel,
+  workflowResumeChannel,
+  workflowResumePayloadSchema,
   workflowRunChannel,
   workflowRunResultSchema,
 } from "@shared/runs";
@@ -74,6 +82,63 @@ export function registerRunIpc(engine: EngineHost): void {
     });
     if (result.type !== "run.cancelResult") {
       throw new Error("Unexpected engine response");
+    }
+  });
+
+  ipcMain.handle(workflowCancelChannel, async () => {
+    const result = await engine.request({
+      type: "workflow.cancel",
+      id: randomUUID(),
+    });
+    if (result.type !== "workflow.cancelResult") {
+      throw new Error("Unexpected engine response");
+    }
+  });
+
+  ipcMain.handle(runSteerChannel, async (_event, payload: unknown) => {
+    const parsed = runSteerPayloadSchema.parse(payload);
+    const result = await engine.request({
+      type: "run.steer",
+      id: randomUUID(),
+      nodeId: parsed.nodeId,
+      text: parsed.text,
+    });
+    if (result.type !== "run.steerResult") {
+      throw new Error("Unexpected engine response");
+    }
+    return steerDeliverySchema.parse(result.delivery);
+  });
+
+  ipcMain.handle(runUnfinishedChannel, async (_event, payload: unknown) => {
+    const parsed = runUnfinishedPayloadSchema.parse(payload);
+    const result = await engine.request({
+      type: "run.unfinished",
+      id: randomUUID(),
+      workflowId: parsed.workflowId,
+    });
+    if (result.type !== "run.unfinishedResult") {
+      throw new Error("Unexpected engine response");
+    }
+    return result.threadId ?? null;
+  });
+
+  ipcMain.handle(workflowResumeChannel, async (_event, payload: unknown) => {
+    const parsed = workflowResumePayloadSchema.parse(payload);
+    const apiKey = apiKeyForRun();
+    try {
+      const result = await engine.request({
+        type: "workflow.resume",
+        id: randomUUID(),
+        workflow: parsed.workflow,
+        apiKey,
+        threadId: parsed.threadId,
+      });
+      if (result.type !== "workflow.runDone") {
+        throw new Error("Unexpected engine response");
+      }
+      return workflowRunResultSchema.parse({ statuses: result.statuses });
+    } catch (error) {
+      throw new Error(scrub(errorText(error), apiKey), { cause: error });
     }
   });
 }

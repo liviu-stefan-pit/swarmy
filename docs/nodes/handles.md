@@ -55,7 +55,7 @@ Several edges may land on the same input. The validator allows that.
 
 A cycle is rejected before any agent starts. The error names every node on the path, for example `Cycle: alpha → beta → alpha`. Wiring a node's own output back into itself is a cycle.
 
-When you press **Run** on the workflow, an edge animates while the source or the target is `running`. It turns red when either end is `failed`. A text edge carries the upstream handoff into the next agent's prompt. That handoff is `summary`, `files`, and `blockers`.
+When you press **Run** on the workflow, an edge animates while the source or the target is `running`. It turns red when either end is `failed`. **Cancel**, **Cancel run**, **Steer**, and **Resume** do not change which handles can connect. A text edge carries the upstream handoff into the next agent's prompt. That handoff is `summary`, `files`, and `blockers`.
 
 A missing node, an unknown type, a handle the node does not have, or two nodes with the same id also fail. `examples/bad-handle.json` is an Agent `diff` output wired to an Agent `file` input. `examples/cycle.json` is a two-node loop.
 

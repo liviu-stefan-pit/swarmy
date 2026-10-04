@@ -115,6 +115,7 @@ it("uses a managed git folder when the node does not set a workspace mode", asyn
         seen.cwd = request.cwd;
         return fake.create(request);
       },
+      resume: (request) => fake.resume(request),
     },
     manager,
     posted,
@@ -152,6 +153,9 @@ function recordingRuntime(seen: { cwd: string; status: string; branch: string })
         seen.status = error instanceof Error ? error.message : "git failed";
       }
       return fake.create(request);
+    },
+    resume(request) {
+      return fake.resume(request);
     },
   };
 }

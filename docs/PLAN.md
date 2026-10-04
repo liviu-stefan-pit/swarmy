@@ -30,7 +30,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 8 | Agent runtime and single run | [x] | phase-08 | 2026-10-03 |
 | 9 | Workspaces | [x] | phase-09 | 2026-10-03 |
 | 10 | LangGraph orchestrator | [x] | phase-10 | 2026-10-03 |
-| 11 | Run control, steering, resume | [ ] | | |
+| 11 | Run control, steering, resume | [x] | phase-11 | 2026-10-04 |
 | 12 | Approval gates | [ ] | | |
 | 13 | Diff review | [ ] | | |
 | 14 | Guardrails | [ ] | | |
@@ -872,7 +872,12 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- **Cancel run** stops every active agent and does not start a node that was still queued. **Cancel** on a card stops that one agent during a workflow run. Downstream nodes that were waiting on it do not start. An unrelated branch still finishes.
+- The run log has a **Steer** box while the selected agent is running. `complete_delivered` is logged as `Steering delivered` on its own line and does not send again. Text already streamed stays; the steer changes what the agent writes after that line. `revert_to_followup` sends that text once after the current turn finishes, and the log says `Steering sent as a follow-up`.
+- A workflow run records its thread in `workflow_runs` in `swarmy.db`. Quitting mid-run leaves the row `running`. Reopen and press **Resume**. LangGraph continues that checkpoint. Nodes that already completed are not run again. An agent that had already been created is continued with `Agent.resume`, and `systemPrompt`, `tools`, and `mcpServers` are passed again. MCP servers are an empty map until Phase 20 fills it. There is no rewind to an earlier checkpoint.
+- Workspaces for a workflow node use a stable id from the thread and the node, and an existing repo worktree or managed folder is reused, so a resumed agent can find its store.
+- Node docs updated (decision D13): `docs/nodes/agent.md`, the index, and `handles.md`. No new decision. No later phase prompt changed.
+- `npm run verify` exited 0.
 
 ---
 

@@ -5,8 +5,16 @@ import {
   runCancelPayloadSchema,
   runStartChannel,
   runStartPayloadSchema,
+  runSteerChannel,
+  runSteerPayloadSchema,
+  runUnfinishedChannel,
+  runUnfinishedPayloadSchema,
   runUpdateChannel,
   runUpdateSchema,
+  steerDeliverySchema,
+  workflowCancelChannel,
+  workflowResumeChannel,
+  workflowResumePayloadSchema,
   workflowRunChannel,
   workflowRunResultSchema,
   type RunUpdate,
@@ -119,6 +127,26 @@ const swarmy: SwarmyApi = {
     async cancel(nodeId) {
       const parsed = runCancelPayloadSchema.parse({ nodeId });
       await ipcRenderer.invoke(runCancelChannel, parsed);
+    },
+    async cancelWorkflow() {
+      await ipcRenderer.invoke(workflowCancelChannel);
+    },
+    async steer(nodeId, text) {
+      const parsed = runSteerPayloadSchema.parse({ nodeId, text });
+      return steerDeliverySchema.parse(await ipcRenderer.invoke(runSteerChannel, parsed));
+    },
+    async unfinished(workflowId) {
+      const parsed = runUnfinishedPayloadSchema.parse({ workflowId });
+      const threadId: unknown = await ipcRenderer.invoke(runUnfinishedChannel, parsed);
+      if (threadId === null) {
+        return null;
+      }
+      const parsedId = z.string().min(1).parse(threadId);
+      return parsedId;
+    },
+    async resume(workflow, threadId) {
+      const parsed = workflowResumePayloadSchema.parse({ workflow, threadId });
+      return workflowRunResultSchema.parse(await ipcRenderer.invoke(workflowResumeChannel, parsed));
     },
     onUpdate(listener) {
       runListeners.add(listener);

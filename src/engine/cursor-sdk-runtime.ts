@@ -7,6 +7,7 @@ import {
   JsonlLocalAgentStore,
   type Run,
   type RunResult,
+  type McpServerConfig,
   type SDKAgent,
   type SDKCustomTool,
   type SDKMessage,
@@ -19,10 +20,12 @@ import type {
   CreateAgentRequest,
   HelloRequest,
   HelloResult,
+  ResumeAgentRequest,
   RuntimeAccount,
   RuntimeAgent,
   RuntimeCustomTool,
   RuntimeEvent,
+  RuntimeMcpServer,
   RuntimeModel,
   RuntimeRun,
   RuntimeRunResult,
@@ -71,6 +74,16 @@ export class CursorSdkRuntime implements AgentRuntime {
       const session = new SdkSession(request, modelId);
       const systemPrompt = request.systemPrompt?.trim();
       await session.open(systemPrompt ? systemPrompt : undefined);
+      return session;
+    });
+  }
+
+  resume(request: ResumeAgentRequest): Promise<RuntimeAgent> {
+    return this.guard(request.apiKey, async () => {
+      const modelId = request.modelId?.trim() || (await pickModel(request.apiKey));
+      const session = new SdkSession(request, modelId);
+      const systemPrompt = request.systemPrompt?.trim();
+      await session.openResume(request.agentId, systemPrompt ? systemPrompt : undefined);
       return session;
     });
   }
@@ -164,6 +177,11 @@ class SdkSession implements RuntimeAgent {
 
   async open(systemPrompt: string | undefined): Promise<void> {
     this.current = await createLocalAgent(this.request, this.modelId, systemPrompt);
+    this.agentId = this.current.agentId;
+  }
+
+  async openResume(agentId: string, systemPrompt: string | undefined): Promise<void> {
+    this.current = await resumeLocalAgent({ ...this.request, agentId }, this.modelId, systemPrompt);
     this.agentId = this.current.agentId;
   }
 
@@ -299,6 +317,31 @@ function createLocalAgent(
     ...(request.tools !== undefined ? { tools: withHandoffTool(request.tools, request.customTools) } : {}),
     ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
     ...(systemPrompt ? { systemPrompt } : {}),
+    mcpServers: toSdkMcpServers(request.mcpServers),
+  });
+}
+
+function resumeLocalAgent(
+  request: ResumeAgentRequest,
+  modelId: string,
+  systemPrompt: string | undefined,
+): Promise<SDKAgent> {
+  const storeDir = join(request.cwd, "agent-store");
+  mkdirSync(storeDir, { recursive: true });
+  return Agent.resume(request.agentId, {
+    apiKey: request.apiKey,
+    name: "Swarmy agent",
+    model: { id: modelId },
+    local: {
+      cwd: request.cwd,
+      settingSources: [],
+      store: new JsonlLocalAgentStore(storeDir),
+      ...(request.customTools ? { customTools: toSdkCustomTools(request.customTools) } : {}),
+    },
+    ...(request.tools !== undefined ? { tools: withHandoffTool(request.tools, request.customTools) } : {}),
+    ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
+    ...(systemPrompt ? { systemPrompt } : {}),
+    mcpServers: toSdkMcpServers(request.mcpServers),
   });
 }
 
@@ -355,6 +398,31 @@ function isSystemPromptRejection(error: unknown): boolean {
 
 function isSystemPromptMessage(message: string | undefined): boolean {
   return Boolean(message?.includes("--system-prompt"));
+}
+
+function toSdkMcpServers(
+  servers: Record<string, RuntimeMcpServer> | undefined,
+): Record<string, McpServerConfig> {
+  const mapped: Record<string, McpServerConfig> = {};
+  if (!servers) {
+    return mapped;
+  }
+  for (const [name, server] of Object.entries(servers)) {
+    if (server.command) {
+      mapped[name] = {
+        command: server.command,
+        ...(server.args ? { args: server.args } : {}),
+      };
+      continue;
+    }
+    if (server.url) {
+      mapped[name] = {
+        url: server.url,
+        ...(server.headers ? { headers: server.headers } : {}),
+      };
+    }
+  }
+  return mapped;
 }
 
 function withHandoffTool(
