@@ -35,6 +35,7 @@ export interface SwarmyApi {
   settings: {
     saveKey(apiKey: string): Promise<void>;
     hasKey(): Promise<boolean>;
+    dataDirectory(): Promise<string>;
     testConnection(): Promise<ConnectionInfo>;
     runHello(): Promise<HelloInfo>;
   };

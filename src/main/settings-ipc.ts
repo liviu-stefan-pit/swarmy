@@ -1,7 +1,8 @@
-import { ipcMain } from "electron";
+import { app, ipcMain } from "electron";
 import { randomUUID } from "node:crypto";
 import {
   connectionInfoSchema,
+  dataDirectoryChannel,
   hasKeyChannel,
   helloChannel,
   helloInfoSchema,
@@ -22,6 +23,8 @@ export function registerSettingsIpc(engine: EngineHost): void {
   });
 
   ipcMain.handle(hasKeyChannel, () => hasApiKey());
+
+  ipcMain.handle(dataDirectoryChannel, () => app.getPath("userData"));
 
   ipcMain.handle(testConnectionChannel, async () => {
     const apiKey = requireApiKey();

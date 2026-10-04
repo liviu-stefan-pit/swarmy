@@ -46,7 +46,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 20 | Inputs and MCP | [x] | phase-20 | 2026-10-04 |
 | 21 | Templates and export | [x] | phase-21 | 2026-10-04 |
 | 22 | Triggers and notifications | [x] | phase-22 | 2026-10-04 |
-| 23 | Packaging | [ ] | | |
+| 23 | Packaging | [~] | | |
 
 ## User Notes
 
@@ -2011,10 +2011,32 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Run the installer on this PC. Launch Swarmy from the Start menu.
-2. Complete first-run with your API key. Test connection succeeds.
-3. Run one hello agent from a template. It completes.
-4. Quit. The worktrees from that run are gone or listed as removed.
+This uses one real Cursor agent. The installer is unsigned. `npm run dist` already wrote `dist\Swarmy-Setup-0.1.0.exe`. You do not need `C:\prod\scratch-repo`. The template agent uses a managed folder.
+
+1. In File Explorer, open `C:\prod\swarmy\dist` and double-click `Swarmy-Setup-0.1.0.exe`.
+2. If Windows shows **Windows protected your PC**, click **More info**, then **Run anyway**. That is the unsigned SmartScreen warning. There is no certificate.
+3. In the installer, click **Next**, leave the install folder as offered, click **Install**, then **Finish**. Do not launch the copy from the repo with `npm run dev`.
+4. The installed app uses the same data folder as `npm run dev`. If you already saved a key there, setup is skipped. To see first-run, quit every Swarmy window, then in PowerShell rename the key file:
+
+```powershell
+Rename-Item -Path "$env:APPDATA\Swarmy\cursor-api-key.bin" -NewName "cursor-api-key.bin.bak" -ErrorAction SilentlyContinue
+```
+
+5. Open the Start menu, type `Swarmy`, and launch **Swarmy**. Wait until the window is in front. The screen is **Set up Swarmy**, not the canvas. **Data directory** shows a path ending in `Swarmy` under AppData. **No key saved** is on the screen.
+6. Click the **API key** box, paste your Cursor API key, and click **Save**. The line changes to **Key saved**.
+7. Click **Test connection**. Wait until an account name and a model id appear under the buttons. **Continue** becomes clickable. Click **Continue**.
+8. The canvas is on screen. The footer reads **Engine connected**.
+9. In the toolbar, click **New**. Click **Researcher**. The canvas shows **Brief** and **Researcher**, with a wire from Brief to Researcher. Leave **Token budget** empty. Leave **Required env vars** empty.
+10. Click **Brief**. In the inspector, replace the text with `Reply with exactly hello. Call submit_handoff with summary hello, files empty, and blockers empty. Do not edit files.` Click the empty canvas.
+11. In the toolbar, click **Run**. The **Researcher** pill leaves **idle**. Wait until it reads **completed**. **Run** is enabled again.
+12. Close the window. In PowerShell:
+
+```powershell
+Get-ChildItem $env:LOCALAPPDATA\Swarmy\managed
+git -C C:\prod\scratch-repo worktree list
+```
+
+`C:\prod\scratch-repo` should not list a new Swarmy worktree. This run used a managed folder under `%LOCALAPPDATA%\Swarmy\managed`, not that repo. Decision D18 keeps that folder after the workflow finishes so a later fork can use it. Tell me if you wanted the folder removed when you quit.
 
 **Prompt.**
 
@@ -2029,4 +2051,8 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- `npm run dist` builds an unsigned x64 NSIS installer, `dist\Swarmy-Setup-0.1.0.exe`. There is no macOS target, Linux target, or auto-update. `win.signExecutable` is false. SmartScreen says Windows protected your PC; More info, then Run anyway.
+- `asarUnpack` is `**/node_modules/@cursor/sdk-win32-x64/**/*`. The packaged tree has `rg.exe` and `cursorsandbox.exe` under `dist\win-unpacked\resources\app.asar.unpacked\node_modules\@cursor\sdk-win32-x64\bin`. `scripts/embed-win-manifest.mjs` writes `<longPathAware>true</longPathAware>` into `Swarmy.exe`. That element is present in the unpacked exe.
+- With no saved API key, the window is **Set up Swarmy**: the data directory (`%APPDATA%\Swarmy`, or `SWARMY_DATA_DIR` when that is set), the API key, **Test connection**, then **Continue** and the canvas. A stored key skips that screen. `npm run smoke:packaged` silent-installs to `%LOCALAPPDATA%\SwarmySmoke`, launches with `SWARMY_RUNTIME=fake`, and checks the window title. It passed.
+- No new decision. Node docs are unchanged; this phase does not add a node or change a handle. A template run is a workflow run, so decision D18 leaves its managed folder on disk. The manual test asks you to look, and to say if quit should remove it.
+- The manual test above is the step-by-step walkthrough. `npm run verify` exited 0.

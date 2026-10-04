@@ -2,6 +2,7 @@ import { z } from "zod";
 
 export const saveKeyChannel = "settings:save-key";
 export const hasKeyChannel = "settings:has-key";
+export const dataDirectoryChannel = "settings:data-directory";
 export const testConnectionChannel = "settings:test-connection";
 export const helloChannel = "settings:hello";
 

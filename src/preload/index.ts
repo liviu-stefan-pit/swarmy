@@ -57,6 +57,7 @@ import {
 } from "@shared/mcp";
 import {
   connectionInfoSchema,
+  dataDirectoryChannel,
   hasKeyChannel,
   helloChannel,
   helloInfoSchema,
@@ -216,6 +217,9 @@ const swarmy: SwarmyApi = {
     },
     async hasKey() {
       return z.boolean().parse(await ipcRenderer.invoke(hasKeyChannel));
+    },
+    async dataDirectory() {
+      return z.string().min(1).parse(await ipcRenderer.invoke(dataDirectoryChannel));
     },
     async testConnection() {
       return connectionInfoSchema.parse(await ipcRenderer.invoke(testConnectionChannel));

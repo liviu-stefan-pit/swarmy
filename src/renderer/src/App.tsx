@@ -3,6 +3,7 @@ import { appInfo } from "@shared/app-info";
 import type { EngineStatus } from "@shared/protocol";
 import type { ConnectionInfo, HelloInfo } from "@shared/settings";
 import { BottomPanel } from "./BottomPanel";
+import { FirstRun } from "./FirstRun";
 import { watchExternalRuns } from "./run-store";
 import { SettingsForm } from "./SettingsForm";
 import { WorkflowEditor } from "./WorkflowCanvas";
@@ -27,6 +28,8 @@ export function App() {
   const [status, setStatus] = useState<EngineStatus>("reconnecting");
   const [workflow, setWorkflow] = useState<{ name: string; apiKey?: string }>({ name: "Untitled" });
   const [keySaved, setKeySaved] = useState(false);
+  const [needsSetup, setNeedsSetup] = useState(false);
+  const [dataDirectory, setDataDirectory] = useState("");
   const [busy, setBusy] = useState(false);
   const [connection, setConnection] = useState<ConnectionInfo | undefined>();
   const [hello, setHello] = useState<HelloInfo | undefined>();
@@ -44,15 +47,32 @@ export function App() {
 
   useEffect(() => {
     let cancelled = false;
-    void window.swarmy.settings.hasKey().then((saved) => {
-      if (!cancelled) {
+    void Promise.all([window.swarmy.settings.hasKey(), window.swarmy.settings.dataDirectory()]).then(
+      ([saved, directory]) => {
+        if (cancelled) {
+          return;
+        }
         setKeySaved(saved);
-      }
-    });
+        setDataDirectory(directory);
+        setNeedsSetup(!saved);
+      },
+    );
     return () => {
       cancelled = true;
     };
   }, []);
+
+  async function saveKey(apiKey: string): Promise<void> {
+    try {
+      await window.swarmy.settings.saveKey(apiKey);
+      setKeySaved(true);
+      setConnection(undefined);
+      setError("");
+    } catch (caught) {
+      setError(errorText(caught));
+      throw caught;
+    }
+  }
 
   async function testConnection(): Promise<void> {
     setBusy(true);
@@ -85,24 +105,37 @@ export function App() {
       <header className="flex items-center border-b border-zinc-800 px-4 py-2">
         <h1 className="text-lg font-semibold tracking-tight">{name}</h1>
       </header>
-      <WorkflowEditor />
-      <BottomPanel />
+      {needsSetup ? (
+        <FirstRun
+          dataDirectory={dataDirectory}
+          workflow={workflow}
+          onWorkflowChange={setWorkflow}
+          onSaveKey={saveKey}
+          keySaved={keySaved}
+          busy={busy}
+          connection={connection}
+          error={error}
+          onTestConnection={() => {
+            void testConnection();
+          }}
+          onContinue={() => {
+            setNeedsSetup(false);
+          }}
+        />
+      ) : (
+        <>
+          <WorkflowEditor />
+          <BottomPanel />
+        </>
+      )}
+      {needsSetup ? null : (
       <details className="border-t border-zinc-800 px-4 py-2">
         <summary className="cursor-pointer text-sm text-zinc-300">Cursor connection</summary>
         <section className="max-w-xl space-y-4 py-3">
           <SettingsForm
             workflow={workflow}
             onWorkflowChange={setWorkflow}
-            onSaveKey={async (apiKey) => {
-              try {
-                await window.swarmy.settings.saveKey(apiKey);
-                setKeySaved(true);
-                setError("");
-              } catch (caught) {
-                setError(errorText(caught));
-                throw caught;
-              }
-            }}
+            onSaveKey={saveKey}
           />
           <p data-testid="key-status" className="text-sm text-zinc-300">
             {keySaved ? "Key saved" : "No key saved"}
@@ -154,6 +187,7 @@ export function App() {
           ) : null}
         </section>
       </details>
+      )}
       <footer
         className="border-t border-zinc-800 px-4 py-2 text-sm text-zinc-300"
         data-testid="engine-status"

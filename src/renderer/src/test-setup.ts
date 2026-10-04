@@ -51,7 +51,10 @@ const swarmy: SwarmyApi = {
       return Promise.resolve();
     },
     hasKey() {
-      return Promise.resolve(false);
+      return Promise.resolve(true);
+    },
+    dataDirectory() {
+      return Promise.resolve("C:\\Users\\swarmy\\AppData\\Roaming\\Swarmy");
     },
     testConnection() {
       return Promise.resolve({ accountLabel: "test@swarmy.local", modelIds: ["fake-model"] });

@@ -2,6 +2,7 @@ import { app, BrowserWindow } from "electron";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { appInfo } from "@shared/app-info";
+import { hasApiKey, saveApiKey } from "./secret-store";
 import { triggerRunChannel, triggerRunEventSchema, triggerSkipChannel, triggerSkipSchema } from "@shared/triggers";
 import type { Workflow } from "@shared/workflow";
 import { startEngineHost, type EngineHost } from "./engine-host";
@@ -13,6 +14,10 @@ import { registerWorkflowIpc } from "./workflow-ipc";
 
 app.setName(appInfo().name);
 app.setAppUserModelId("Swarmy");
+const dataDirectory = process.env.SWARMY_DATA_DIR?.trim();
+if (dataDirectory) {
+  app.setPath("userData", dataDirectory);
+}
 
 function createWindow(): BrowserWindow {
   const window = new BrowserWindow({
@@ -45,6 +50,7 @@ function createWindow(): BrowserWindow {
 }
 
 void app.whenReady().then(() => {
+  seedE2eKey();
   const engine = startEngineHost();
   const triggers = createTriggerHost({
     startRun(workflow) {
@@ -81,6 +87,14 @@ void app.whenReady().then(() => {
     }
   });
 });
+
+function seedE2eKey(): void {
+  const key = process.env.SWARMY_E2E_SEED_KEY?.trim();
+  if (!key || hasApiKey()) {
+    return;
+  }
+  saveApiKey(key);
+}
 
 function broadcast(channel: string, payload: unknown): void {
   for (const window of BrowserWindow.getAllWindows()) {
