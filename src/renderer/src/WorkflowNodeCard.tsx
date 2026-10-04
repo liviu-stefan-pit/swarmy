@@ -14,7 +14,12 @@ const handleColor: Record<HandleDataType, string> = {
   mcp: "#c4b5fd",
 };
 
-type FlowNodeData = { label: string; status?: NodeRunStatus; busy?: boolean };
+type FlowNodeData = {
+  label: string;
+  status?: NodeRunStatus;
+  busy?: boolean;
+  workflowRunning?: boolean;
+};
 
 const statusClass: Record<NodeRunStatus, string> = {
   idle: "bg-zinc-800 text-zinc-300",
@@ -45,6 +50,7 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
   const inputs = definition?.inputs ?? [];
   const outputs = definition?.outputs ?? [];
   const status = data.status ?? "idle";
+  const deleteLocked = status === "running" || data.workflowRunning === true;
 
   return (
     <article
@@ -60,11 +66,29 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
       ) : null}
       <header className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{data.label}</h3>
-        {type === "agent" || type === "approval" ? (
-          <span data-testid="node-status" className={`rounded-full px-2 py-0.5 text-xs ${statusClass[status]}`}>
-            {status}
-          </span>
-        ) : null}
+        <div className="flex items-center gap-2">
+          {type === "agent" || type === "approval" ? (
+            <span data-testid="node-status" className={`rounded-full px-2 py-0.5 text-xs ${statusClass[status]}`}>
+              {status}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            data-testid="delete-node"
+            disabled={deleteLocked}
+            className="nodrag nopan rounded border border-zinc-600 px-2 py-0.5 text-xs hover:bg-zinc-800 disabled:opacity-50"
+            onPointerDown={(event: PointerEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+            }}
+            onClick={(event: MouseEvent<HTMLButtonElement>) => {
+              event.stopPropagation();
+              if (deleteLocked) return;
+              useWorkflowStore.getState().removeNode(id);
+            }}
+          >
+            Delete
+          </button>
+        </div>
       </header>
       {outputs.length > 0 ? (
         <div className="mt-2 space-y-1">

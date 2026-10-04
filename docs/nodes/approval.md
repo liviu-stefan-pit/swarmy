@@ -6,7 +6,7 @@ An Approval node is the human checkpoint. A person reviews a diff before it is a
 
 ## On the canvas
 
-Drag **Approval** onto the canvas. It has one red input and one red output, both `diff`.
+Drag **Approval** onto the canvas. It has one red input and one red output, both `diff`, and a **Delete** button that removes this node and any wires attached to it. The button is disabled, and Delete and Backspace do nothing, while this node is running or a workflow run is in progress.
 
 | Handle | Direction | Type | Connect it to |
 | --- | --- | --- | --- |

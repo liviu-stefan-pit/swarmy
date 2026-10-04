@@ -6,7 +6,7 @@ An Agent is a Cursor agent. It is the worker in the swarm. It can read text, a f
 
 ## On the canvas
 
-Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**, and **Cancel**. The pill reads `idle` until a run starts. A workflow run moves it through `queued`, then `running`, then `completed`, `failed`, or `cancelled`.
+Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**, **Cancel**, and **Delete**. The pill reads `idle` until a run starts. **Delete** removes this card and the wires attached to it. The workflow stays. Delete and Backspace do the same when this card is selected and focus is not in a text field. The button is disabled, and those keys do nothing, while this agent is running or a workflow run is in progress. A workflow run moves it through `queued`, then `running`, then `completed`, `failed`, or `cancelled`.
 
 **Run** on the card sends that agent's task prompt to one Cursor agent. The reply streams into the **Run log** under the canvas. **Cancel** on the card stops that one agent, including while a workflow run is in progress. Nodes that were still waiting on it do not start. An unrelated branch still finishes. Only one card run is active at a time.
 

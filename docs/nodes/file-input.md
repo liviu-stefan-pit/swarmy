@@ -6,7 +6,7 @@ A File node hands one file to a downstream node. It is a source. It has no input
 
 ## On the canvas
 
-Drag **File** onto the canvas. The card has one output, **File**, in amber.
+Drag **File** onto the canvas. The card has one output, **File**, in amber, and a **Delete** button that removes this node and any wires attached to it.
 
 That output connects only to an [Agent](agent.md) `file` input. Planner, Approval, and Merge have no file input, so a wire to them is refused.
 

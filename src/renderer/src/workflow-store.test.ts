@@ -40,6 +40,40 @@ it("leaves the edge list unchanged when a diff output is wired to a file input",
   expect(useWorkflowStore.getState().connectionError).toMatch(/file/);
 });
 
+it("removing a node drops it and every edge that used it", () => {
+  useWorkflowStore.getState().addNode("textInput", { x: 0, y: 0 });
+  useWorkflowStore.getState().addNode("agent", { x: 240, y: 0 });
+  useWorkflowStore.getState().addNode("planner", { x: 480, y: 0 });
+
+  const [text, agent, planner] = useWorkflowStore.getState().workflow.nodes;
+  if (!text || !agent || !planner) {
+    throw new Error("expected a text node, an agent, and a planner");
+  }
+
+  useWorkflowStore.getState().connect({
+    source: text.id,
+    sourceHandle: "text",
+    target: agent.id,
+    targetHandle: "text",
+  });
+  useWorkflowStore.getState().connect({
+    source: agent.id,
+    sourceHandle: "text",
+    target: planner.id,
+    targetHandle: "text",
+  });
+  useWorkflowStore.getState().selectNode(agent.id);
+
+  const workflowId = useWorkflowStore.getState().workflow.id;
+  useWorkflowStore.getState().removeNode(agent.id);
+
+  const next = useWorkflowStore.getState();
+  expect(next.workflow.id).toBe(workflowId);
+  expect(next.workflow.nodes.map((node) => node.id)).toEqual([text.id, planner.id]);
+  expect(next.workflow.edges).toEqual([]);
+  expect(next.selectedNodeId).toBeNull();
+});
+
 it("editing the system prompt on the selected agent changes only that node", () => {
   useWorkflowStore.getState().addNode("agent", { x: 0, y: 0 });
   useWorkflowStore.getState().addNode("agent", { x: 240, y: 0 });

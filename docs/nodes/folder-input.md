@@ -6,7 +6,7 @@ A Folder node hands a directory to a downstream node. It is a source. It has no 
 
 ## On the canvas
 
-Drag **Folder** onto the canvas. The card has one output, **Folder**, in green.
+Drag **Folder** onto the canvas. The card has one output, **Folder**, in green, and a **Delete** button that removes this node and any wires attached to it.
 
 That output connects only to an [Agent](agent.md) `folder` input.
 

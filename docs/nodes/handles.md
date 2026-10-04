@@ -4,6 +4,8 @@ An edge is valid only when the output and the input carry the same data type. Th
 
 Phase 15 does not change this table. A workflow budget and run history are not handles.
 
+Phase 15.5 does not change this table. Removing a node also removes every edge whose source or target is that node. The other nodes stay.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |

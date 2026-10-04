@@ -6,7 +6,7 @@ An MCP node is an external tool server an agent can call. MCP is the way Swarmy 
 
 ## On the canvas
 
-Drag **MCP** onto the canvas. The card has one output, **MCP**, in violet.
+Drag **MCP** onto the canvas. The card has one output, **MCP**, in violet, and a **Delete** button that removes this node and any wires attached to it.
 
 That output connects only to an [Agent](agent.md) `mcp` input. One server can feed several agents.
 

@@ -26,6 +26,7 @@ import { useWorkflowStore } from "./workflow-store";
 
 const gridSize = 16;
 const nodeDragType = "application/swarmy-node";
+const deleteKeys = ["Backspace", "Delete"];
 
 const flowNodeTypes: NodeTypes = Object.fromEntries(
   nodeTypes.map((nodeType) => [nodeType.type, WorkflowNodeCard]),
@@ -66,26 +67,34 @@ function FlowSurface() {
   const runBusy = useRunStore((state) => state.activeNodeId !== null) || workflowRunning;
   const connectionError = useWorkflowStore((state) => state.connectionError);
   const addNode = useWorkflowStore((state) => state.addNode);
+  const removeNode = useWorkflowStore((state) => state.removeNode);
   const connect = useWorkflowStore((state) => state.connect);
   const moveNode = useWorkflowStore((state) => state.moveNode);
   const selectNode = useWorkflowStore((state) => state.selectNode);
   const setViewport = useWorkflowStore((state) => state.setViewport);
   const initialViewport = useMemo(() => useWorkflowStore.getState().workflow.viewport, []);
 
-  const flowNodes = useMemo<Node<{ label: string; status: NodeRunStatus; busy: boolean }>[]>(
+  const flowNodes = useMemo<
+    Node<{ label: string; status: NodeRunStatus; busy: boolean; workflowRunning: boolean }>[]
+  >(
     () =>
-      nodes.map((node) => ({
-        id: node.id,
-        type: node.type,
-        position: node.position,
-        data: {
-          label: node.data.label,
-          status: statusByNode[node.id] ?? "idle",
-          busy: runBusy,
-        },
-        selected: node.id === selectedNodeId,
-      })),
-    [nodes, runBusy, selectedNodeId, statusByNode],
+      nodes.map((node) => {
+        const status = statusByNode[node.id] ?? "idle";
+        return {
+          id: node.id,
+          type: node.type,
+          position: node.position,
+          deletable: status !== "running" && !workflowRunning,
+          data: {
+            label: node.data.label,
+            status,
+            busy: runBusy,
+            workflowRunning,
+          },
+          selected: node.id === selectedNodeId,
+        };
+      }),
+    [nodes, runBusy, selectedNodeId, statusByNode, workflowRunning],
   );
 
   const flowEdges = useMemo<Edge[]>(
@@ -134,6 +143,9 @@ function FlowSurface() {
       if (change.type === "position" && change.position) {
         moveNode(change.id, { x: change.position.x, y: change.position.y });
       }
+      if (change.type === "remove") {
+        removeNode(change.id);
+      }
     }
   }
 
@@ -168,7 +180,7 @@ function FlowSurface() {
         snapToGrid
         snapGrid={[gridSize, gridSize]}
         colorMode="dark"
-        deleteKeyCode={null}
+        deleteKeyCode={deleteKeys}
         proOptions={{ hideAttribution: true }}
         onNodesChange={onNodesChange}
         onConnect={onConnect}

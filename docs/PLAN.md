@@ -6,7 +6,7 @@ Research that led here is in [docs/research](research). Where those PDFs disagre
 
 ## How to run a phase
 
-1. Find the first phase below whose status is `[ ]`. Skip Phase 15.5 until Phase 15 is `[x]`.
+1. Find the first phase below whose status is `[ ]`. Skip Phase 15.5 until Phase 15 is `[x]`. Skip Phase 15.6 until Phase 15.5 is `[x]`.
 2. Open a **new** Cursor chat (do not continue an old one).
 3. Paste that phase's **Prompt** block, unchanged.
 4. The agent follows `.cursor/skills/start-phase/SKILL.md`, writes failing tests, then implements.
@@ -35,7 +35,8 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 13 | Diff review | [x] | phase-13 | 2026-10-04 |
 | 14 | Guardrails | [x] | phase-14 | 2026-10-04 |
 | 15 | Observability and budgets | [x] | phase-15 | 2026-10-04 |
-| 15.5 | Delete a node | [ ] | | |
+| 15.5 | Delete a node | [x] | phase-15.5 | 2026-10-04 |
+| 15.6 | Resize and collapse panels | [ ] | | |
 | 16 | Time travel | [ ] | | |
 | 17 | Shared task board | [ ] | | |
 | 18 | Planner node | [ ] | | |
@@ -54,12 +55,15 @@ Write changes and wishes here, in your own words. Phase agents must read this se
 | 2026-10-04 | Always make the manual test detailed enough that I can go through the app step by step without worrying I missed something. | done |
 | 2026-10-04 | Use C:\prod\scratch-repo for every test that needs a git repo. | done |
 | 2026-10-04 | I need a way to delete a node I added. A button on the node, or the Delete key. Do this after Phase 15, before Phase 16. | done |
+| 2026-10-04 | I can't resize any panel or section, or collapse it. The screen gets cluttered when I keep adding agents, and a laptop is hard to navigate. Do this after Phase 15.5, before Phase 16. | done |
 
 Phase 12's manual test is now that walkthrough. The same rule is in Conventions, so later phases write their manual tests the same way.
 
 Phase 13 initialized `C:\prod\scratch-repo` with a committed `README.md` that contains `scratch`, and its manual test uses that path. The same path is in Conventions, so later phases use it for real agent runs that need a repository.
 
-Node deletion is Phase 15.5. Phase 15 does not build it. Phase 5 left the Delete key off on purpose; 15.5 turns it back on, with a button on the card.
+Node deletion is Phase 15.5. Phase 15 does not build it. Phase 5 left the Delete key off on purpose; 15.5 turns it back on, with a button on the card. Every card has **Delete** (`data-testid="delete-node"`). Delete and Backspace remove the selected node when focus is outside a text field, and they leave the workflow in place.
+
+Panel layout is Phase 15.6. Phase 15.5 does not build it. The palette, inspector, inbox, history, and run log stay fixed until that phase.
 
 ## Vision
 
@@ -1237,6 +1241,72 @@ Start only after Phase 15 is tagged phase-15. If it is not, stop.
 Write the tests listed in that phase and show them failing before you write the implementation.
 Delete removes one node and its edges. It does not delete the workflow, and it does not fire while a text field is focused.
 Tag the commit phase-15.5. Do not renumber Phase 16.
+When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
+```
+
+**Completion notes.**
+
+- **Delete** on every node card removes that node, clears the selection when it was the selected node, and drops every edge whose source or target is that node. The other nodes and the workflow stay. Autosave already stores any workflow change, so the saved graph no longer has that node.
+- Delete and Backspace are on again (`deleteKeyCode` is Backspace and Delete). They remove the selected node when focus is on the canvas. They do nothing in a text field: inspector prompts, the write-paths box, the steering box, the approval reason, and any other input, textarea, select, or contenteditable. The button is disabled, and the keys do nothing, while that node is `running` or a workflow run is in progress.
+- Node docs updated (decision D13): the index, `handles.md` (handles did not change), and each node page. No new decision. Phase 16 was not renumbered. Phase 15.6 was already in the plan and was left as written.
+- `npm run verify` exited 0.
+
+---
+
+## Phase 15.6 — Resize and collapse panels
+
+**Start after.** Phase 15.5 is tagged `phase-15.5`. If that tag is missing, stop. Do not implement this phase inside Phase 15.5.
+
+**Goal.** On a small screen, shrink or hide the side panels and the sections under the canvas so the graph stays usable as more agents are added.
+
+**Why.** The **Nodes** palette is a fixed 240px, the **Inspector** is a fixed 320px, and **Inbox**, **Run history**, and **Run log** stack under the canvas at fixed heights. Only **Cursor connection** can fold. Nothing else can be resized.
+
+**In scope.**
+
+- A collapse control on **Nodes**, **Inspector**, **Inbox**, **Run history**, and **Run log**. Collapsed, only that section's heading stays. Expanding shows it again. **Cursor connection** already folds; leave that control as it is.
+- A drag handle on the right edge of **Nodes**, the left edge of **Inspector**, and the top edge of the stack under the canvas. Dragging changes the palette width, the inspector width, or how tall that bottom stack is compared with the canvas. A panel cannot be dragged down to nothing; collapsing is how it disappears.
+- The canvas fills the space a collapsed or narrowed panel gives up.
+- Widths, the bottom-stack height, and which sections are collapsed are remembered on this PC. They are not stored in the workflow file.
+- Stable `data-testid` values: `collapse-palette`, `collapse-inspector`, `collapse-inbox`, `collapse-history`, `collapse-run-log`, `resize-palette`, `resize-inspector`, `resize-bottom`.
+
+**Out of scope.** Floating panels, a second monitor layout, a different layout per workflow, and any change to what those panels contain. Do not renumber Phase 16.
+
+**Tag.** `phase-15.6`.
+
+**Tests to write first.**
+
+1. Collapsing **Nodes** hides the palette buttons, and the same control shows them again.
+2. Dragging the inspector handle stores a new width, and that width is still there after the layout state is reloaded.
+3. Collapsing **Run log** hides the log text and leaves the **Run log** heading.
+
+**Acceptance.** Verify passes.
+
+**Manual test.**
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. From the **Nodes** list, drag **Agent** onto the canvas three times. The cards read **Agent**, **Agent 2**, and **Agent 3**. The canvas is the area between **Nodes** and **Inspector**.
+3. On the **Nodes** heading, click the collapse control. The node buttons disappear. The canvas grows to the left. The **Nodes** heading is still visible.
+4. Click that control again. The node buttons are back.
+5. Drag the handle on the right edge of **Nodes** to the left until the list is narrower, then to the right until it is wider. The canvas width changes with it. The list does not disappear.
+6. Click **Agent**. The inspector shows its fields. Drag the handle on the left edge of **Inspector** so the inspector is narrower. The task prompt field is still readable. The canvas grows into the space.
+7. On the **Inspector** heading, click the collapse control. The fields disappear. The canvas grows to the right. The **Inspector** heading stays.
+8. Click that control again. The fields for **Agent** are back.
+9. Under the canvas, **Inbox**, **Run history**, and **Run log** are visible. Drag the handle along the top of that stack downward. The canvas gets shorter and the stack gets taller. Drag it upward. The canvas gets taller. The stack does not vanish.
+10. On **Run log**, click the collapse control. The log text is hidden. The **Run log** heading stays. **Inbox** and **Run history** stay open.
+11. On **Run history** and **Inbox**, click each collapse control. Only their headings remain. The canvas is most of the window.
+12. Open **Cursor connection**. It still expands and collapses as before.
+13. Quit the app and run `npm run dev` again. **Nodes** and **Inspector** are the widths you dragged. **Inbox**, **Run history**, and **Run log** are still collapsed. The three agent cards are still on the canvas.
+
+**Prompt.**
+
+```text
+You are implementing Swarmy Phase 15.6 — Resize and collapse panels.
+
+Follow .cursor/skills/start-phase/SKILL.md, then implement only Phase 15.6 in docs/PLAN.md.
+Start only after Phase 15.5 is tagged phase-15.5. If it is not, stop.
+Write the tests listed in that phase and show them failing before you write the implementation.
+The user can resize and collapse the palette, the inspector, and the sections under the canvas. Layout is remembered on this PC and is not stored in the workflow file.
+Tag the commit phase-15.6. Do not renumber Phase 16.
 When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
 ```
 

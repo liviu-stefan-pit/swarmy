@@ -6,7 +6,7 @@ A Text node is a piece of writing the rest of the graph can read: a brief, a goa
 
 ## On the canvas
 
-Drag **Text** onto the canvas. The card has one output, **Text**, in blue.
+Drag **Text** onto the canvas. The card has one output, **Text**, in blue, and a **Delete** button that removes this node and any wires attached to it.
 
 Connect that output to a blue input:
 

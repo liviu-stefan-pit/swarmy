@@ -25,6 +25,7 @@ type WorkflowState = {
   selectedNodeId: string | null;
   connectionError: string | null;
   addNode: (type: string, position: Position) => void;
+  removeNode: (id: string) => void;
   connect: (connection: WorkflowConnection) => void;
   moveNode: (id: string, position: Position) => void;
   selectNode: (id: string | null) => void;
@@ -84,6 +85,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       workflow: { ...workflow, nodes: [...workflow.nodes, node] },
       selectedNodeId: node.id,
       connectionError: null,
+    });
+  },
+  removeNode: (id) => {
+    const { workflow, selectedNodeId } = get();
+    if (!workflow.nodes.some((node) => node.id === id)) {
+      return;
+    }
+    set({
+      workflow: {
+        ...workflow,
+        nodes: workflow.nodes.filter((node) => node.id !== id),
+        edges: workflow.edges.filter((edge) => edge.source !== id && edge.target !== id),
+      },
+      selectedNodeId: selectedNodeId === id ? null : selectedNodeId,
     });
   },
   connect: (connection) => {

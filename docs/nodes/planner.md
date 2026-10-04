@@ -6,7 +6,7 @@ A Planner turns a brief into a plan that other nodes can read. It is for splitti
 
 ## On the canvas
 
-Drag **Planner** onto the canvas. It has one blue input and one blue output, both `text`.
+Drag **Planner** onto the canvas. It has one blue input and one blue output, both `text`, and a **Delete** button that removes this node and any wires attached to it.
 
 | Handle | Direction | Type | Connect it to |
 | --- | --- | --- | --- |

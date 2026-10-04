@@ -8,7 +8,7 @@ On the canvas this is a join in the graph. The git merge, the one that combines 
 
 ## On the canvas
 
-Drag **Merge** onto the canvas.
+Drag **Merge** onto the canvas. **Delete** on the card removes this node and any wires attached to it.
 
 | Handle | Direction | Type | Connect it to |
 | --- | --- | --- | --- |
