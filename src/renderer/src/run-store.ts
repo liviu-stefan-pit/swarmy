@@ -177,7 +177,11 @@ export const useRunStore = create<RunState>((set, get) => ({
     const payload: ApprovalDecision =
       decision.action === "reject"
         ? { nodeId: decision.nodeId, action: "reject", reason }
-        : { nodeId: decision.nodeId, action: "approve" };
+        : {
+            nodeId: decision.nodeId,
+            action: "approve",
+            ...(decision.files && decision.files.length > 0 ? { files: decision.files } : {}),
+          };
     set({ approvals: get().approvals.filter((item) => item.nodeId !== decision.nodeId) });
     if (get().workflowRunning) {
       try {
@@ -270,7 +274,12 @@ function applyUpdate(
     update.status === "waiting"
       ? [
           ...get().approvals.filter((item) => item.nodeId !== update.nodeId),
-          { nodeId: update.nodeId, summary: update.log },
+          {
+            nodeId: update.nodeId,
+            summary: update.log,
+            files: update.files ?? [],
+            ...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
+          },
         ]
       : get().approvals.filter((item) => item.nodeId !== update.nodeId);
   set({

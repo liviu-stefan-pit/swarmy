@@ -21,13 +21,11 @@ Press **Run**. When the upstream agent finishes, this node pauses. The **Inbox**
 
 **Approve** lets the diff continue to the next node. **Reject** needs a reason. That note is added to the upstream agent's prompt, and that agent runs again. Then the inbox asks once more. Three rejections can send the agent around again. The fourth rejection stops the branch. The approval card reads `failed`, and the error says the run stopped after 3 reject cycles.
 
-Quit the app while the inbox is waiting. Reopen it. The same item is still there. Approve or reject from that item. There is no separate **Resume** button while an approval is waiting.
+When the upstream agent changed files, the inbox item lists those files and shows a side-by-side diff. The agent's private `agent-store` folder is left out of that list and is not committed. The left side is the worktree base. The right side is what the agent wrote, and you can edit it. **Approve** writes that right-hand text into the worktree, makes a normal git commit on the agent's branch, and passes those paths to the next node. The next agent's prompt includes the text you approved. **Reject** does not write the edited buffer. The worktree file stays as the agent left it.
 
-## Later
+The inbox line **Worktree** is the folder that commit lands in. Copy that path before you approve if you want to open the file afterwards. The folder stays on disk after the run so you can read the commit.
 
-| Phase | What arrives |
-| --- | --- |
-| 13 | A side-by-side diff. Edits on the right-hand side are what get approved |
+Quit the app while the inbox is waiting. Reopen it. The same item is still there, including the diff. Approve or reject from that item. There is no separate **Resume** button while an approval is waiting.
 
 ## Schema
 

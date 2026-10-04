@@ -11,13 +11,20 @@ import {
   StateGraph,
 } from "@langchain/langgraph";
 import { z } from "zod";
+import {
+  approvalDecisionSchema,
+  pendingApprovalSchema,
+  type ApprovalDecision,
+  type PendingApproval,
+} from "@shared/runs";
 import type { Workflow, WorkflowNode } from "@shared/workflow";
 import { validateWorkflow } from "@shared/validate-workflow";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { openRunCatalog, type RunCatalog } from "./run-catalog";
 import type { AgentRuntime, RuntimeCustomTool, RuntimeMcpServer, SteerAck } from "./runtime";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
-import type { WorkspaceManager } from "./workspace-manager";
+import { collectWorktreeDiff, commitReviewedEdits, safeRelative } from "./worktree-diff";
+import type { AgentWorkspace, WorkspaceManager } from "./workspace-manager";
 
 const handoffPayloadSchema = z.object({
   summary: z.string(),
@@ -25,13 +32,11 @@ const handoffPayloadSchema = z.object({
   blockers: z.array(z.string()),
 });
 
-const approvalPayloadSchema = z.object({
-  nodeId: z.string(),
-  summary: z.string(),
-});
-
 const resumeDecisionSchema = z.union([
-  z.object({ action: z.literal("approve") }),
+  z.object({
+    action: z.literal("approve"),
+    files: approvalDecisionSchema.shape.files,
+  }),
   z.object({ action: z.literal("reject"), reason: z.string() }),
 ]);
 
@@ -42,6 +47,7 @@ export interface Handoff {
   summary: string;
   files: string[];
   blockers: string[];
+  texts?: Record<string, string>;
 }
 
 export interface NodeSnapshot {
@@ -72,22 +78,14 @@ const GraphState = Annotation.Root({
 
 type GraphValues = typeof GraphState.State;
 
-export interface PendingApproval {
-  nodeId: string;
-  summary: string;
-}
-
-export interface ApprovalDecision {
-  nodeId: string;
-  action: "approve" | "reject";
-  reason?: string;
-}
+export type { ApprovalDecision, PendingApproval };
 
 export interface WorkflowRunUpdate {
   nodeId: string;
   status: "queued" | "running" | "waiting" | "completed" | "failed" | "cancelled";
   log: string;
   workspacePath?: string;
+  files?: PendingApproval["files"];
 }
 
 export interface WorkflowRunResult {
@@ -131,6 +129,7 @@ const emptyState = {
 export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
   const threadId = input.threadId ?? randomUUID();
   const sessions = new Map<string, AgentRunSession>();
+  const retained = new Map<string, AgentWorkspace>();
   const cancelledNodes = new Set<string>();
   const waiting: PendingApproval[] = [];
   let runCancelled = false;
@@ -142,7 +141,12 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
     threadId,
     done,
     pendingApprovals() {
-      return waiting.map((item) => ({ nodeId: item.nodeId, summary: item.summary }));
+      return waiting.map((item) => ({
+        nodeId: item.nodeId,
+        summary: item.summary,
+        files: item.files,
+        ...(item.workspacePath ? { workspacePath: item.workspacePath } : {}),
+      }));
     },
     decide(decision) {
       const waiter = decisionWaiter;
@@ -204,6 +208,7 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
       ...(catalog ? { catalog } : {}),
       ...(input.onUpdate ? { onUpdate: input.onUpdate } : {}),
       sessions,
+      retained,
       isCancelled: () => runCancelled,
       isNodeCancelled: (nodeId) => cancelledNodes.has(nodeId),
     };
@@ -310,7 +315,16 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
   }
 
   function publish(items: readonly PendingApproval[]): void {
-    waiting.splice(0, waiting.length, ...items.map((item) => ({ nodeId: item.nodeId, summary: item.summary })));
+    waiting.splice(
+      0,
+      waiting.length,
+      ...items.map((item) => ({
+        nodeId: item.nodeId,
+        summary: item.summary,
+        files: item.files,
+        ...(item.workspacePath ? { workspacePath: item.workspacePath } : {}),
+      })),
+    );
   }
 }
 
@@ -340,6 +354,7 @@ interface RunContext {
   catalog?: RunCatalog;
   onUpdate?: (update: WorkflowRunUpdate) => void;
   sessions: Map<string, AgentRunSession>;
+  retained: Map<string, AgentWorkspace>;
   isCancelled: () => boolean;
   isNodeCancelled: (nodeId: string) => boolean;
 }
@@ -376,7 +391,7 @@ async function executeNode(
   }
 
   if (node.type === "approval") {
-    return executeApproval(input, node, parents, state);
+    return executeApproval(input, workflow, node, parents, state);
   }
 
   if (node.type !== "agent") {
@@ -394,27 +409,59 @@ async function executeNode(
   return executeAgent(input, workflow, node, state);
 }
 
-function executeApproval(
+async function executeApproval(
   input: RunContext,
+  workflow: Workflow,
   node: WorkflowNode,
   parents: readonly string[],
   state: GraphValues,
-): NodeUpdate {
+): Promise<NodeUpdate> {
   const completed = parents
     .map((id) => state.snapshots?.[id])
     .filter((snapshot): snapshot is NodeSnapshot => snapshot !== undefined);
   const summary = approvalSummary(node, completed);
-  input.onUpdate?.({ nodeId: node.id, status: "waiting", log: summary });
-  const raw = interrupt({ nodeId: node.id, summary });
+  const reviewed = await reviewFiles(input, workflow, parents);
+  const files = reviewed.map((file) => ({ path: file.path, original: file.original, modified: file.modified }));
+  const workspacePath = reviewed[0]?.workspacePath;
+  input.onUpdate?.({
+    nodeId: node.id,
+    status: "waiting",
+    log: summary,
+    ...(files.length > 0 ? { files } : {}),
+    ...(workspacePath ? { workspacePath } : {}),
+  });
+  const raw = interrupt({
+    nodeId: node.id,
+    summary,
+    files,
+    ...(workspacePath ? { workspacePath } : {}),
+  });
   const parsed = resumeDecisionSchema.safeParse(raw);
   if (!parsed.success) {
     return failedApproval(input, node.id, "The approval decision was not understood.");
   }
   if (parsed.data.action === "approve") {
+    const texts: Record<string, string> = {};
+    let committed: string[];
+    try {
+      const edits = parsed.data.files ?? [];
+      for (const edit of edits) {
+        texts[safeRelative(edit.path)] = edit.text;
+      }
+      committed = await commitReview(reviewed, edits);
+    } catch (error) {
+      const message = error instanceof Error && error.message ? error.message : "The diff could not be committed";
+      return failedApproval(input, node.id, message);
+    }
     const handoff = combinedHandoff(completed, summary);
-    input.onUpdate?.({ nodeId: node.id, status: "completed", log: handoff.summary });
+    const next: Handoff = {
+      ...handoff,
+      ...(committed.length > 0 ? { files: committed } : {}),
+      ...(Object.keys(texts).length > 0 ? { texts } : {}),
+    };
+    input.onUpdate?.({ nodeId: node.id, status: "completed", log: next.summary });
     return {
-      snapshots: { [node.id]: { status: "completed", handoff } },
+      snapshots: { [node.id]: { status: "completed", handoff: next } },
       routes: { [node.id]: "approve" },
     };
   }
@@ -542,7 +589,9 @@ async function executeAgent(
     return { snapshots: { [node.id]: { status: "failed", handoff } } };
   } finally {
     input.sessions.delete(node.id);
-    if (workspace) {
+    if (workspace && keepsWorktree(workflow, node.id)) {
+      input.retained.set(node.id, workspace);
+    } else if (workspace) {
       await input.workspaces.teardown(workspace).catch(() => undefined);
     }
   }
@@ -654,8 +703,14 @@ function agentPrompt(task: string, upstream: readonly Handoff[], feedback: strin
         summary: handoff.summary,
         files: handoff.files,
         blockers: handoff.blockers,
+        ...(handoff.texts && Object.keys(handoff.texts).length > 0 ? { texts: handoff.texts } : {}),
       }),
     );
+    if (handoff.texts) {
+      for (const [path, text] of Object.entries(handoff.texts)) {
+        lines.push(path, text);
+      }
+    }
   }
   if (feedback.trim().length > 0) {
     lines.push(`The approval was rejected: ${feedback.trim()}`);
@@ -791,11 +846,16 @@ function parentStatus(
   return undefined;
 }
 
-function resumeValue(decision: ApprovalDecision): { action: "approve" } | { action: "reject"; reason: string } {
+function resumeValue(
+  decision: ApprovalDecision,
+): { action: "approve"; files?: ApprovalDecision["files"] } | { action: "reject"; reason: string } {
   if (decision.action === "reject") {
     return { action: "reject", reason: (decision.reason ?? "").trim() };
   }
-  return { action: "approve" };
+  return {
+    action: "approve",
+    ...(decision.files && decision.files.length > 0 ? { files: decision.files } : {}),
+  };
 }
 
 function isResumeCommand(step: StepInput): boolean {
@@ -823,12 +883,98 @@ function readPending(state: {
 function approvalsFromValues(values: readonly unknown[]): PendingApproval[] {
   const items: PendingApproval[] = [];
   for (const value of values) {
-    const parsed = approvalPayloadSchema.safeParse(value);
+    const parsed = pendingApprovalSchema.safeParse(value);
     if (parsed.success) {
-      items.push({ nodeId: parsed.data.nodeId, summary: parsed.data.summary });
+      items.push(parsed.data);
     }
   }
   return items;
+}
+
+interface ReviewedFile {
+  path: string;
+  original: string;
+  modified: string;
+  workspacePath: string;
+}
+
+async function reviewFiles(
+  input: RunContext,
+  workflow: Workflow,
+  parents: readonly string[],
+): Promise<ReviewedFile[]> {
+  const files: ReviewedFile[] = [];
+  for (const parentId of parents) {
+    const workspace = await agentWorkspace(input, workflow, parentId);
+    if (!workspace) {
+      continue;
+    }
+    try {
+      const diff = await collectWorktreeDiff(workspace.path);
+      for (const file of diff.files) {
+        files.push({ ...file, workspacePath: workspace.path });
+      }
+    } catch {
+      // A folder that is not a git worktree has nothing to review.
+    }
+  }
+  return files;
+}
+
+async function agentWorkspace(
+  input: RunContext,
+  workflow: Workflow,
+  nodeId: string,
+): Promise<AgentWorkspace | undefined> {
+  const kept = input.retained.get(nodeId);
+  if (kept) {
+    return kept;
+  }
+  const node = workflow.nodes.find((item) => item.id === nodeId);
+  if (!node || node.type !== "agent") {
+    return undefined;
+  }
+  const mode = node.data.workspaceMode ?? "managed";
+  const located = await input.workspaces.locate({
+    id: workspaceId(input.threadId, nodeId),
+    mode,
+    ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
+    ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
+  });
+  return located ?? undefined;
+}
+
+async function commitReview(
+  reviewed: readonly ReviewedFile[],
+  edits: readonly { path: string; text: string }[],
+): Promise<string[]> {
+  const byWorkspace = new Map<string, { path: string; text: string }[]>();
+  for (const edit of edits) {
+    const path = safeRelative(edit.path);
+    const home = reviewed.find((file) => file.path === path)?.workspacePath ?? reviewed[0]?.workspacePath;
+    if (!home) {
+      continue;
+    }
+    const list = byWorkspace.get(home) ?? [];
+    list.push({ path, text: edit.text });
+    byWorkspace.set(home, list);
+  }
+  if (byWorkspace.size === 0) {
+    const homes = [...new Set(reviewed.map((file) => file.workspacePath))];
+    for (const home of homes) {
+      byWorkspace.set(home, []);
+    }
+  }
+  const committed: string[] = [];
+  for (const [cwd, files] of byWorkspace) {
+    committed.push(...(await commitReviewedEdits(cwd, files)));
+  }
+  return committed;
+}
+
+function keepsWorktree(workflow: Workflow, nodeId: string): boolean {
+  const nodesById = new Map(workflow.nodes.map((node) => [node.id, node]));
+  return (successors(workflow).get(nodeId) ?? []).some((id) => nodesById.get(id)?.type === "approval");
 }
 
 function idleContext(threadId: string): RunContext {
@@ -855,6 +1001,9 @@ function idleContext(threadId: string): RunContext {
       provision() {
         return Promise.reject(new Error("Listing approvals does not run agents"));
       },
+      locate() {
+        return Promise.resolve(null);
+      },
       teardown() {
         return Promise.resolve();
       },
@@ -864,6 +1013,7 @@ function idleContext(threadId: string): RunContext {
     },
     threadId,
     sessions: new Map(),
+    retained: new Map(),
     isCancelled: () => false,
     isNodeCancelled: () => false,
   };

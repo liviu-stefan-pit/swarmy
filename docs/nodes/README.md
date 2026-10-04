@@ -2,7 +2,7 @@
 
 This is the guide to the canvas: what each node is for, how to wire it, and the JSON shape of a workflow. The connection rules are in [handles.md](handles.md). Each node has its own page.
 
-These pages match the app as of Phase 12. You can build a graph, configure an agent, run that one agent, or press **Run** in the workflow toolbar to run the whole graph. **Cancel** stops one agent. **Cancel run** stops the graph. A running agent can be steered from the run log. If you quit mid-run, **Resume** continues it and leaves completed nodes completed. An **Approval** node pauses the run. The **Inbox** lists it until you approve, or reject with a note. Independent branches run together. Each agent gets a repo worktree, a managed folder, or a plain folder. A page says which phase adds the behavior that is still ahead.
+These pages match the app as of Phase 13. You can build a graph, configure an agent, run that one agent, or press **Run** in the workflow toolbar to run the whole graph. **Cancel** stops one agent. **Cancel run** stops the graph. A running agent can be steered from the run log. If you quit mid-run, **Resume** continues it and leaves completed nodes completed. An **Approval** node pauses the run. The **Inbox** lists it until you approve, or reject with a note. When the agent changed files, the inbox shows a side-by-side diff and the right-hand side is what gets approved. Independent branches run together. Each agent gets a repo worktree, a managed folder, or a plain folder. A worktree that feeds an approval stays on disk. A page says which phase adds the behavior that is still ahead.
 
 | Node | Page | Takes | Produces |
 | --- | --- | --- | --- |
@@ -10,7 +10,7 @@ These pages match the app as of Phase 12. You can build a graph, configure an ag
 | File | [file-input.md](file-input.md) | nothing | file |
 | Folder | [folder-input.md](folder-input.md) | nothing | folder |
 | MCP | [mcp.md](mcp.md) | nothing | mcp |
-| Agent | [agent.md](agent.md) | text, file, folder, mcp | text, diff |
+| Agent | [agent.md](agent.md) | text, file, folder, mcp, diff | text, diff |
 | Planner | [planner.md](planner.md) | text | text |
 | Approval | [approval.md](approval.md) | diff | diff |
 | Merge | [merge.md](merge.md) | text, diff | text, diff |
@@ -25,7 +25,7 @@ These pages match the app as of Phase 12. You can build a graph, configure an ag
 6. The first node of a type is labeled with the type name (`Text`, `Agent`). The next one is `Text 2`, `Agent 2`, and so on.
 7. The API key UI is the **Cursor connection** disclosure under the canvas.
 
-Agent cards show a status pill (`idle`, `queued`, `running`, `waiting`, `completed`, `failed`, or `cancelled`), plus **Run** and **Cancel**. An Approval card shows the same pill. `waiting` means the inbox is asking for a decision. **Run** on the card starts that agent alone. **Cancel** on the card stops that agent even during a workflow run, and nodes still waiting on it do not start. **Run** in the toolbar starts every node, with `queued` until that node's turn. **Cancel run** stops the whole graph. While the selected agent is running, the run log has a **Steer** box. The log says whether that text was delivered or sent as a follow-up. If a run is unfinished when you reopen the app, **Resume** continues it. The run log under the canvas shows the selected agent's reply, the upstream handoff summaries, and the workspace path. The pill, the log, and that path are not stored in the workflow file. A `repo` worktree and a `managed` folder are removed when that node finishes. Edges animate while a run moves across them and turn red when a node fails.
+Agent cards show a status pill (`idle`, `queued`, `running`, `waiting`, `completed`, `failed`, or `cancelled`), plus **Run** and **Cancel**. An Approval card shows the same pill. `waiting` means the inbox is asking for a decision. **Run** on the card starts that agent alone. **Cancel** on the card stops that agent even during a workflow run, and nodes still waiting on it do not start. **Run** in the toolbar starts every node, with `queued` until that node's turn. **Cancel run** stops the whole graph. While the selected agent is running, the run log has a **Steer** box. The log says whether that text was delivered or sent as a follow-up. If a run is unfinished when you reopen the app, **Resume** continues it. The run log under the canvas shows the selected agent's reply, the upstream handoff summaries, and the workspace path. The pill, the log, and that path are not stored in the workflow file. A `repo` worktree and a `managed` folder are removed when that node finishes, unless an Approval follows that agent. That worktree stays so the diff can be reviewed and committed. Edges animate while a run moves across them and turn red when a node fails.
 
 ## A small graph
 

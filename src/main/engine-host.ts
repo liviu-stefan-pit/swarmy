@@ -275,6 +275,7 @@ function broadcastRunUpdate(message: Extract<EngineMessage, { type: "run.update"
     status: message.status,
     log: message.log,
     ...(message.workspacePath ? { workspacePath: message.workspacePath } : {}),
+    ...(message.files && message.files.length > 0 ? { files: message.files } : {}),
   });
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {

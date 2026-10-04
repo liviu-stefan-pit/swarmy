@@ -24,7 +24,12 @@ export default defineConfig({
       },
       {
         resolve: {
-          alias: { "@shared": shared },
+          alias: {
+            "@shared": shared,
+            "monaco-editor/min/vs/editor/editor.main.css": resolve(
+              "node_modules/monaco-editor/min/vs/editor/editor.main.css",
+            ),
+          },
         },
         plugins: [react()],
         test: {

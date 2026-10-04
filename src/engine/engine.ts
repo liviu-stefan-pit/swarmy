@@ -319,6 +319,7 @@ async function answerWorkflowRun(
           status: update.status,
           log: scrub(update.log, message.apiKey),
           ...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
+          ...(update.files && update.files.length > 0 ? { files: update.files } : {}),
         });
       },
     });

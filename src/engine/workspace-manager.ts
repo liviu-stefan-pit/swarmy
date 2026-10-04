@@ -21,6 +21,7 @@ export interface AgentWorkspace {
 
 export interface WorkspaceManager {
   provision(request: WorkspaceProvision): Promise<AgentWorkspace>;
+  locate(request: WorkspaceProvision): Promise<AgentWorkspace | null>;
   teardown(workspace: AgentWorkspace): Promise<void>;
   trackChild(workspaceId: string, pid: number): void;
 }
@@ -66,6 +67,40 @@ class NodeWorkspaceManager implements WorkspaceManager {
       return this.provisionManaged(request);
     }
     return this.provisionFolder(request);
+  }
+
+  async locate(request: WorkspaceProvision): Promise<AgentWorkspace | null> {
+    assertWorkspaceId(request.id);
+    if (request.mode === "repo") {
+      const path = join(this.rootDir, "wt", request.id);
+      if (!(await directoryExists(path))) {
+        return null;
+      }
+      const repositoryPath = request.repositoryPath?.trim();
+      return {
+        id: request.id,
+        mode: "repo",
+        path,
+        branch: `swarm/${request.id}`,
+        ...(repositoryPath ? { repositoryPath: resolve(repositoryPath) } : {}),
+      };
+    }
+    if (request.mode === "managed") {
+      const path = join(this.rootDir, "managed", request.id);
+      if (!(await directoryExists(path))) {
+        return null;
+      }
+      return { id: request.id, mode: "managed", path };
+    }
+    const folderPath = request.folderPath?.trim();
+    if (!folderPath) {
+      return null;
+    }
+    const path = resolve(folderPath);
+    if (!(await directoryExists(path))) {
+      return null;
+    }
+    return { id: request.id, mode: "folder", path };
   }
 
   async teardown(workspace: AgentWorkspace): Promise<void> {

@@ -11,11 +11,23 @@ export const nodeRunStatusSchema = z.enum([
   "cancelled",
 ]);
 
+export const approvalDiffFileSchema = z.object({
+  path: z.string().min(1),
+  original: z.string(),
+  modified: z.string(),
+});
+
+export const approvalEditSchema = z.object({
+  path: z.string().min(1),
+  text: z.string(),
+});
+
 export const runUpdateSchema = z.object({
   nodeId: z.string().min(1),
   status: z.enum(["queued", "running", "waiting", "completed", "failed", "cancelled"]),
   log: z.string(),
   workspacePath: z.string().min(1).optional(),
+  files: z.array(approvalDiffFileSchema).optional(),
 });
 
 export const runStartPayloadSchema = z.object({
@@ -48,12 +60,15 @@ export const runUnfinishedPayloadSchema = z.object({
 export const pendingApprovalSchema = z.object({
   nodeId: z.string().min(1),
   summary: z.string(),
+  files: z.array(approvalDiffFileSchema).default([]),
+  workspacePath: z.string().min(1).optional(),
 });
 
 export const approvalDecisionSchema = z.object({
   nodeId: z.string().min(1),
   action: z.enum(["approve", "reject"]),
   reason: z.string().optional(),
+  files: z.array(approvalEditSchema).optional(),
 });
 
 export const approvalListPayloadSchema = z.object({

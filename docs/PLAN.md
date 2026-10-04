@@ -32,7 +32,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 10 | LangGraph orchestrator | [x] | phase-10 | 2026-10-03 |
 | 11 | Run control, steering, resume | [x] | phase-11 | 2026-10-04 |
 | 12 | Approval gates | [x] | phase-12 | 2026-10-04 |
-| 13 | Diff review | [ ] | | |
+| 13 | Diff review | [x] | phase-13 | 2026-10-04 |
 | 14 | Guardrails | [ ] | | |
 | 15 | Observability and budgets | [ ] | | |
 | 16 | Time travel | [ ] | | |
@@ -51,8 +51,11 @@ Write changes and wishes here, in your own words. Phase agents must read this se
 | Date | Note | Status |
 | --- | --- | --- |
 | 2026-10-04 | Always make the manual test detailed enough that I can go through the app step by step without worrying I missed something. | done |
+| 2026-10-04 | Use C:\prod\scratch-repo for every test that needs a git repo. | done |
 
 Phase 12's manual test is now that walkthrough. The same rule is in Conventions, so later phases write their manual tests the same way.
+
+Phase 13 initialized `C:\prod\scratch-repo` with a committed `README.md` that contains `scratch`, and its manual test uses that path. The same path is in Conventions, so later phases use it for real agent runs that need a repository.
 
 ## Vision
 
@@ -270,6 +273,7 @@ Why: Phase 12's manual test is an agent, then an approval, then another agent. T
 - Do not add dependencies "for later". Add a dependency in the phase that first imports it.
 - Node docs live in `docs/nodes/` (decision D13). Update the index, `handles.md`, and the node page when a phase adds a type, changes a handle, or changes what the user can do with a node.
 - A manual test is a step-by-step walkthrough of the app. Name each click, which handle to drag, and what should be on screen before the next step. A person should be able to follow it without guessing.
+- Real agent runs and manual tests that need a git repository use `C:\prod\scratch-repo`. Do not create a new scratch repo for each phase. Automated tests keep their own temporary repositories.
 
 ## Risks
 
@@ -987,9 +991,24 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Run an agent that edits a README in a scratch repo, followed by an approval.
-2. In the diff, change one word, approve.
-3. The worktree file contains your word. The sink agent, if any, sees that text.
+This uses a real Cursor agent. The repository is `C:\prod\scratch-repo`. It already has one commit, and `README.md` contains the word `scratch`.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Diff review` and press Enter. The **Workflows** dropdown should show that name.
+4. From the **Nodes** list, drag **Agent** onto the canvas, then **Approval** to its right, then **Agent** again further right. The cards read **Agent**, **Approval**, and **Agent 2**.
+5. Connect the red **Diff** dots only. Blue, amber, green, and violet dots are the wrong type.
+   - On **Agent**, drag the red **Diff** dot on the right to the red **Diff** dot on the left of **Approval**.
+   - On **Approval**, drag the red **Diff** dot on the right to the red **Diff** dot on the left of **Agent 2**. That left-hand red dot is the last input on the agent card.
+   - You should see two edges. If a red message appears at the top of the canvas, that wire did not stick. Drag from the red dot again.
+6. Click **Agent**. In the inspector, set **Workspace mode** to `repo`. A **Repository** field appears. Paste `C:\prod\scratch-repo`. Set **Task prompt** to `In README.md, replace the word scratch with the word agent. Do not change any other file.`
+7. Click **Agent 2**. Leave **Workspace mode** on **Not set**. Set **Task prompt** to `Reply with the exact README text you were given. Do not edit files.`
+8. Click **Run** in the toolbar. Do not click **Run** on a card.
+9. While the first agent works, its pill reads **running** and **Agent 2** stays **queued**. When it finishes, the **Approval** pill reads **waiting**. **Agent 2** is still **queued**. The **Inbox** shows one item titled **Approval**. It lists a file **README.md** and a side-by-side diff. The left side contains `scratch`. The right side contains `agent`. A **Worktree** path is under the summary. Copy that path. **Reject** stays disabled until the reason box has text.
+10. Click in the right-hand editor and change `agent` to `reviewed`. Leave the left side as it is.
+11. Click **Approve**. **Agent 2** goes **running**, then **completed**. The inbox reads **No approvals waiting.**
+12. Open the **Worktree** path you copied. `README.md` there contains `reviewed`. In that folder, `git log -1 --oneline` mentions `Approve reviewed diff`.
+13. Click **Agent 2**. The run log includes `reviewed`.
 
 **Prompt.**
 
@@ -1003,7 +1022,15 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A waiting approval collects `git diff` against the worktree base, including untracked files. The inbox lists those files and shows a Monaco diff, side by side. The right-hand side is editable.
+- **Approve** writes that text into the upstream worktree, commits it on the agent's branch (`Approve reviewed diff`), and resumes. The next agent's prompt includes the paths and the approved text. **Reject** still uses the Phase 12 path and does not write the edited buffer.
+- An agent worktree that feeds an approval is kept when the agent node finishes, so the review still has a folder to diff and commit. It stays on disk after the run. The inbox shows that path as **Worktree**. Other agents are still deleted when their node finishes.
+- Node docs updated (decision D13): `docs/nodes/approval.md`, `docs/nodes/agent.md`, the index, and `handles.md`. No new decision. No later phase prompt changed.
+- The manual test uses `C:\prod\scratch-repo`, recorded in User Notes and Conventions.
+- Follow-up: nothing in a later phase deletes those kept approval worktrees.
+- The first manual run blanked the window when the inbox loaded the diff. The editor assigned `MonacoEnvironment` as a bare name, which throws inside a renderer module, and React then unmounted the app. Closing that window quit the process, so the in-flight `workflow:run` handler reported `Engine is shutting down`. The editor now sets `globalThis.MonacoEnvironment`. If the diff still fails to load, the inbox shows that error and the rest of the window stays up.
+- The agent's private `agent-store` folder is left out of the review and out of the approve commit.
+- `npm run verify` exited 0.
 
 ---
 

@@ -29,6 +29,9 @@ export default defineConfig({
       alias: {
         "@renderer": resolve("src/renderer/src"),
         "@shared": shared,
+        "monaco-editor/min/vs/editor/editor.main.css": resolve(
+          "node_modules/monaco-editor/min/vs/editor/editor.main.css",
+        ),
       },
     },
     plugins: [react(), tailwindcss()],

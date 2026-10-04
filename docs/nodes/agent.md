@@ -16,7 +16,7 @@ While the selected agent is `running`, the run log has a steering box. **Steer**
 
 If you quit while a workflow run is unfinished, reopen the app and press **Resume**. Nodes that already completed stay completed. An agent that had already started is continued with `Agent.resume`, and its system prompt, tools, and MCP servers are passed again. Rewinding to an earlier checkpoint is not here yet.
 
-Each agent is asked to call `submit_handoff` with `summary`, `files`, and `blockers`. Those three fields are what the next agent sees. If the tool is not called, the final assistant text is the handoff and it is marked unstructured. The run uses the workspace mode on this agent. While it runs, the **Run log** shows the workspace path. After the node finishes, Swarmy deletes a `repo` worktree or a `managed` folder. A `folder` path is left in place.
+Each agent is asked to call `submit_handoff` with `summary`, `files`, and `blockers`. Those three fields are what the next agent sees. If the tool is not called, the final assistant text is the handoff and it is marked unstructured. The run uses the workspace mode on this agent. While it runs, the **Run log** shows the workspace path. After the node finishes, Swarmy deletes a `repo` worktree or a `managed` folder, unless an [Approval](approval.md) follows this agent. That worktree stays so the inbox can diff it and so an approval can commit into it. A `folder` path is left in place.
 
 Select the card. The inspector on the right edits that agent only:
 
