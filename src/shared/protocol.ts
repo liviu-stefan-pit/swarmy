@@ -1,6 +1,7 @@
 import { z } from "zod";
 import {
   approvalDecisionSchema,
+  boardTaskSchema,
   nodeRunStatusSchema,
   pendingApprovalSchema,
   runCheckpointSchema,
@@ -147,6 +148,11 @@ export const runStartMessageSchema = z.object({
 
 export const runUpdateMessageSchema = runUpdateSchema.extend({
   type: z.literal("run.update"),
+});
+
+export const boardUpdateMessageSchema = z.object({
+  type: z.literal("board.update"),
+  tasks: z.array(boardTaskSchema),
 });
 
 export const runDoneMessageSchema = z.object({
@@ -344,6 +350,7 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   workflowFailedMessageSchema,
   runStartMessageSchema,
   runUpdateMessageSchema,
+  boardUpdateMessageSchema,
   runDoneMessageSchema,
   runCancelMessageSchema,
   runCancelResultMessageSchema,

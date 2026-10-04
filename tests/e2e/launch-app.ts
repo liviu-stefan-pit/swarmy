@@ -3,7 +3,9 @@ import { mkdtemp, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
-export async function launchSwarmy(): Promise<{ app: ElectronApplication; close: () => Promise<void> }> {
+export async function launchSwarmy(
+  env: Record<string, string> = {},
+): Promise<{ app: ElectronApplication; close: () => Promise<void> }> {
   const dataDir = await mkdtemp(join(tmpdir(), "swarmy-e2e-"));
   const app = await electron.launch({
     args: [join(process.cwd(), "out", "main", "index.js")],
@@ -12,6 +14,7 @@ export async function launchSwarmy(): Promise<{ app: ElectronApplication; close:
       SWARMY_RUNTIME: "fake",
       SWARMY_DATA_DIR: dataDir,
       SWARMY_WORKSPACES_DIR: join(dataDir, "workspaces"),
+      ...env,
     },
   });
 

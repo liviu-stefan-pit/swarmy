@@ -7,7 +7,8 @@ import { ResizeEdge } from "./PanelChrome";
 import { RunHistory } from "./RunHistory";
 import { RunLog } from "./RunLog";
 import { SettingsForm } from "./SettingsForm";
-import { displayedBottomHeight, maxBottomHeight, openBottomWeight, usePanelLayoutStore } from "./panel-layout-store";
+import { displayedBottomHeight, maxBottomHeight, openBottomWeight, totalBottomWeight, usePanelLayoutStore } from "./panel-layout-store";
+import { TaskBoard } from "./TaskBoard";
 import { WorkflowEditor } from "./WorkflowCanvas";
 
 function engineStatusLabel(status: EngineStatus): string {
@@ -30,7 +31,7 @@ function BottomStack() {
       const shown = displayedBottomHeight(state);
       if (shown !== undefined && shown > maxStored) {
         const weight = openBottomWeight(state);
-        state.setBottomHeight(weight === 0 ? state.bottomHeight : (maxStored * 4) / weight);
+        state.setBottomHeight(weight === 0 ? state.bottomHeight : (maxStored * totalBottomWeight) / weight);
       }
     };
     fit();
@@ -52,6 +53,7 @@ function BottomStack() {
         className="h-2.5 shrink-0 cursor-row-resize border-t border-zinc-800 bg-zinc-900 hover:bg-sky-700"
       />
       <div className={displayed === undefined ? undefined : "flex min-h-0 flex-1 flex-col overflow-auto"}>
+        <TaskBoard />
         <ApprovalInbox />
         <RunHistory />
         <RunLog />

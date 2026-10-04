@@ -135,6 +135,9 @@ const swarmy: SwarmyApi = {
     onUpdate() {
       return () => undefined;
     },
+    onBoard() {
+      return () => undefined;
+    },
   },
 };
 

@@ -8,6 +8,8 @@ Phase 15.5 does not change this table. Removing a node also removes every edge w
 
 Phase 16 does not change this table. Forking a run does not add or remove a handle.
 
+Phase 17 does not change this table. The shared task board is not a handle. Agents reach it through `update_task` and `inspect_board`.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |

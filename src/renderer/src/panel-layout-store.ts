@@ -18,6 +18,7 @@ export const defaultPanelLayout = {
   inboxCollapsed: false,
   historyCollapsed: false,
   runLogCollapsed: false,
+  boardCollapsed: false,
 };
 
 export type PanelLayoutState = typeof defaultPanelLayout;
@@ -31,6 +32,7 @@ type PanelLayoutStore = PanelLayoutState & {
   toggleInbox: () => void;
   toggleHistory: () => void;
   toggleRunLog: () => void;
+  toggleBoard: () => void;
 };
 
 type DragEdge = "palette" | "inspector" | "bottom";
@@ -39,10 +41,15 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, Math.round(value)));
 }
 
-const totalBottomWeight = 4;
+export const totalBottomWeight = 5;
 
 export function openBottomWeight(state: PanelLayoutState): number {
-  return (state.inboxCollapsed ? 0 : 1) + (state.historyCollapsed ? 0 : 1) + (state.runLogCollapsed ? 0 : 2);
+  return (
+    (state.boardCollapsed ? 0 : 1) +
+    (state.inboxCollapsed ? 0 : 1) +
+    (state.historyCollapsed ? 0 : 1) +
+    (state.runLogCollapsed ? 0 : 2)
+  );
 }
 
 export function displayedBottomHeight(state: PanelLayoutState): number | undefined {
@@ -91,7 +98,8 @@ function isLayoutState(value: unknown): value is PanelLayoutState {
     typeof record.inspectorCollapsed === "boolean" &&
     typeof record.inboxCollapsed === "boolean" &&
     typeof record.historyCollapsed === "boolean" &&
-    typeof record.runLogCollapsed === "boolean"
+    typeof record.runLogCollapsed === "boolean" &&
+    (record.boardCollapsed === undefined || typeof record.boardCollapsed === "boolean")
   );
 }
 
@@ -118,6 +126,7 @@ export function readPanelLayout(): PanelLayoutState {
       inboxCollapsed: parsed.inboxCollapsed,
       historyCollapsed: parsed.historyCollapsed,
       runLogCollapsed: parsed.runLogCollapsed,
+      boardCollapsed: parsed.boardCollapsed === true,
     };
   } catch {
     return { ...defaultPanelLayout };
@@ -134,6 +143,7 @@ function storedLayout(state: PanelLayoutStore): PanelLayoutState {
     inboxCollapsed: state.inboxCollapsed,
     historyCollapsed: state.historyCollapsed,
     runLogCollapsed: state.runLogCollapsed,
+    boardCollapsed: state.boardCollapsed,
   };
 }
 
@@ -177,6 +187,9 @@ export const usePanelLayoutStore = create<PanelLayoutStore>((set, get) => ({
   },
   toggleRunLog: () => {
     commit(set, get, { runLogCollapsed: !get().runLogCollapsed });
+  },
+  toggleBoard: () => {
+    commit(set, get, { boardCollapsed: !get().boardCollapsed });
   },
 }));
 

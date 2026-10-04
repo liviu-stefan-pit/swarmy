@@ -38,7 +38,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 15.5 | Delete a node | [x] | phase-15.5 | 2026-10-04 |
 | 15.6 | Resize and collapse panels | [x] | phase-15.6 | 2026-10-04 |
 | 16 | Time travel | [x] | phase-16 | 2026-10-04 |
-| 17 | Shared task board | [ ] | | |
+| 17 | Shared task board | [x] | phase-17 | 2026-10-04 |
 | 17.5 | Token use | [ ] | | |
 | 18 | Planner node | [ ] | | |
 | 19 | Merge node | [ ] | | |
@@ -1430,8 +1430,18 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Run two parallel real agents and tell each to post a task with its node name.
-2. The Board panel shows both rows while the run is in progress.
+This uses two real Cursor agents. They are not wired together, so they run at the same time. Leave **Workspace mode** on **Not set** (that uses a managed folder). Leave **Token budget** empty. Leave **Guardrails** unchecked. This test does not need `C:\prod\scratch-repo`.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Task board` and press Tab. The **Workflows** dropdown should show that name. Leave **Token budget** empty.
+4. Under the canvas, the first section is **Board**. It says **No tasks yet.** **Inbox** is below it.
+5. From the **Nodes** list, drag **Agent** onto the canvas twice, left and right. The cards read **Agent** and **Agent 2**. Leave them unconnected. You should see no edges, and no red message at the top of the canvas.
+6. Click **Agent**. In the inspector, **Workspace mode** stays **Not set**. **Guardrails** stays unchecked. Click in **Task prompt** and paste `Call update_task once with id "agent-task", owner "Agent", status "open", and summary "posted by Agent". Then call inspect_board. Do not edit files.`
+7. Click **Agent 2**. **Workspace mode** stays **Not set**. **Guardrails** stays unchecked. Set **Task prompt** to `Call update_task once with id "agent-2-task", owner "Agent 2", status "open", and summary "posted by Agent 2". Then call inspect_board. Do not edit files.`
+8. In the toolbar, click **Run**. Leave the **Run** button on each card alone.
+9. Both pills move to **running**. While they are still **running**, look at **Board**. It lists two rows without a refresh. One row shows `agent-task`, `Agent`, `open`, and `posted by Agent`. The other shows `agent-2-task`, `Agent 2`, `open`, and `posted by Agent 2`.
+10. Wait until both pills read **completed**. The same two rows are still on **Board**. The **Run log** should not say the run was cancelled.
 
 **Prompt.**
 
@@ -1446,7 +1456,11 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A workflow run stores tasks in `board_tasks` inside `swarmy.db`, one row per task id, scoped by the run id. Columns are task id, owner, status, and summary. `update_task` inserts or replaces that one row. `inspect_board` returns the rows for that run as JSON. A second run id reads an empty list.
+- Both tools are attached to every agent in the workflow run, beside `submit_handoff`. The prompt tells the agent its card label and those two tool names. There is no SQL tool. A card **Run** does not attach the board.
+- Two parallel agents can both write. Each write is one row, so one agent's task does not replace the other's. The **Board** panel under the canvas replaces its list from `board.update` events while the run is in progress. The section collapses the same way as **Inbox**.
+- The manual test above is the click path for the two checks this phase named. Node docs updated (decision D13): the index, `handles.md` (handles did not change), and `docs/nodes/agent.md`. No new decision. Phase 18 is unchanged.
+- `npm run verify` exited 0.
 
 ---
 

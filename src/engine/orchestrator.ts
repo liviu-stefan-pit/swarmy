@@ -16,12 +16,14 @@ import {
   budgetExceededMessage,
   pendingApprovalSchema,
   type ApprovalDecision,
+  type BoardTask,
   type NodeRunStatus,
   type PendingApproval,
 } from "@shared/runs";
 import type { Workflow, WorkflowNode } from "@shared/workflow";
 import { validateWorkflow } from "@shared/validate-workflow";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
+import type { TaskBoard } from "./task-board";
 import { openRunCatalog, type RunCatalog } from "./run-catalog";
 import type { AgentRuntime, RuntimeCustomTool, RuntimeMcpServer, SteerAck } from "./runtime";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
@@ -104,6 +106,10 @@ export interface WorkflowRunResult {
 const handoffInstruction =
   "When you finish, call submit_handoff. Its payload has summary, files, and blockers.";
 
+function boardInstruction(label: string): string {
+  return `Your name is ${label}. Post or change a task with update_task. Its arguments are id, owner, status, and summary. Read the board with inspect_board. Those two tools are the only way to change the board.`;
+}
+
 export interface WorkflowRunInput {
   workflow: Workflow;
   runtime: AgentRuntime;
@@ -115,6 +121,8 @@ export interface WorkflowRunInput {
   resume?: boolean;
   decision?: ApprovalDecision;
   onUpdate?: (update: WorkflowRunUpdate) => void;
+  taskBoard?: TaskBoard;
+  onBoard?: (tasks: BoardTask[]) => void;
 }
 
 export interface WorkflowRunHandle {
@@ -220,6 +228,8 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
       ...(catalog ? { catalog } : {}),
       ...(workflow.budgetTokens !== undefined ? { budgetTokens: workflow.budgetTokens } : {}),
       ...(input.onUpdate ? { onUpdate: input.onUpdate } : {}),
+      ...(input.taskBoard ? { taskBoard: input.taskBoard } : {}),
+      ...(input.onBoard ? { onBoard: input.onBoard } : {}),
       sessions,
       retained,
       isCancelled: () => runCancelled,
@@ -583,6 +593,8 @@ interface RunContext {
   catalog?: RunCatalog;
   budgetTokens?: number;
   onUpdate?: (update: WorkflowRunUpdate) => void;
+  taskBoard?: TaskBoard;
+  onBoard?: (tasks: BoardTask[]) => void;
   sessions: Map<string, AgentRunSession>;
   retained: Map<string, AgentWorkspace>;
   isCancelled: () => boolean;
@@ -787,7 +799,11 @@ async function executeAgent(
       node.data.taskPrompt ?? "",
       upstream.map((snapshot) => snapshot.handoff),
       note,
+      node.data.label,
     );
+    const boardTools = input.taskBoard?.tools(input.threadId, (tasks) => {
+      input.onBoard?.(tasks);
+    });
     const savedAgentId = note.trim().length > 0 ? undefined : input.catalog?.agentId(input.threadId, node.id);
     const session = startAgentRun({
       runtime: input.runtime,
@@ -795,7 +811,7 @@ async function executeAgent(
         apiKey: input.apiKey,
         cwd: workspacePath,
         prompt,
-        customTools: { submit_handoff: submitHandoff },
+        customTools: { submit_handoff: submitHandoff, ...boardTools },
         mcpServers: emptyMcpServers,
         ...(node.data.modelId ? { modelId: node.data.modelId } : {}),
         ...(node.data.systemPrompt !== undefined ? { systemPrompt: node.data.systemPrompt } : {}),
@@ -970,8 +986,8 @@ function isSwarmGraph(graph: object): graph is SwarmGraph {
   return "addNode" in graph && "addEdge" in graph && "addConditionalEdges" in graph && "compile" in graph;
 }
 
-function agentPrompt(task: string, upstream: readonly Handoff[], feedback: string): string {
-  const lines = [handoffInstruction, task.trim().length > 0 ? task : "Reply."];
+function agentPrompt(task: string, upstream: readonly Handoff[], feedback: string, label: string): string {
+  const lines = [handoffInstruction, boardInstruction(label), task.trim().length > 0 ? task : "Reply."];
   for (const handoff of upstream) {
     lines.push(
       JSON.stringify({

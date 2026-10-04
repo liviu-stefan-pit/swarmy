@@ -9,6 +9,7 @@ import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
 import { forkRun, listPendingApprovals, listRunCheckpoints, startWorkflowRun, type WorkflowRunHandle } from "./orchestrator";
 import { openRunCatalog, unfinishedThread, type RunCatalog } from "./run-catalog";
+import { openTaskBoard, type TaskBoard } from "./task-board";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
 import { createWorkspaceManager, type AgentWorkspace, type WorkspaceManager } from "./workspace-manager";
@@ -51,6 +52,11 @@ export function attachEngine(
   const getCheckpointer = (): SqliteCheckpointer => {
     checkpoints ??= SqliteCheckpointer.open(join(workflowDataDir(), "swarmy.db"));
     return checkpoints;
+  };
+  let taskBoard: TaskBoard | undefined;
+  const getTaskBoard = (): TaskBoard => {
+    taskBoard ??= openTaskBoard(join(workflowDataDir(), "swarmy.db"));
+    return taskBoard;
   };
 
   port.onMessage((input: unknown) => {
@@ -95,7 +101,7 @@ export function attachEngine(
     }
 
     if (message.type === "workflow.run" || message.type === "workflow.resume") {
-      void answerWorkflowRun(port, getRuntime(), getWorkspaces, getCheckpointer, message, () => graphRunning || activeRuns.size > 0, (running) => {
+      void answerWorkflowRun(port, getRuntime(), getWorkspaces, getCheckpointer, getTaskBoard, message, () => graphRunning || activeRuns.size > 0, (running) => {
         graphRunning = running;
       }, (handle) => {
         workflowHandle = handle;
@@ -318,6 +324,7 @@ async function answerWorkflowRun(
   runtimePromise: Promise<AgentRuntime>,
   getWorkspaces: () => WorkspaceManager,
   getCheckpointer: () => SqliteCheckpointer,
+  getTaskBoard: () => TaskBoard,
   message: Extract<EngineMessage, { type: "workflow.run" | "workflow.resume" }>,
   isBusy: () => boolean,
   setRunning: (running: boolean) => void,
@@ -341,6 +348,10 @@ async function answerWorkflowRun(
       apiKey: message.apiKey,
       workspaces: getWorkspaces(),
       checkpointer: getCheckpointer(),
+      taskBoard: getTaskBoard(),
+      onBoard(tasks) {
+        port.postMessage({ type: "board.update", tasks });
+      },
       ...(message.type === "workflow.resume"
         ? {
             resume: true,

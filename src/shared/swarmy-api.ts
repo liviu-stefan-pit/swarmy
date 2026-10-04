@@ -1,6 +1,7 @@
 import type { EngineStatus } from "./protocol";
 import type {
   ApprovalDecision,
+  BoardTask,
   PendingApproval,
   RunDone,
   RunForkResult,
@@ -48,5 +49,6 @@ export interface SwarmyApi {
     checkpoints(workflow: Workflow, threadId: string): Promise<RunCheckpoint[]>;
     fork(workflow: Workflow, threadId: string, checkpointId: string): Promise<RunForkResult>;
     onUpdate(listener: (update: RunUpdate) => void): () => void;
+    onBoard(listener: (tasks: BoardTask[]) => void): () => void;
   };
 }

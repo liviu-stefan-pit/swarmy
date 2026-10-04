@@ -24,6 +24,15 @@ export const approvalEditSchema = z.object({
   text: z.string(),
 });
 
+export const boardTaskSchema = z.object({
+  id: z.string().min(1),
+  owner: z.string().min(1),
+  status: z.string().min(1),
+  summary: z.string(),
+});
+
+export type BoardTask = z.infer<typeof boardTaskSchema>;
+
 export const runUpdateSchema = z.object({
   nodeId: z.string().min(1),
   status: z.enum(["queued", "running", "waiting", "completed", "failed", "cancelled"]),
@@ -164,6 +173,7 @@ export const runCancelChannel = "run:cancel";
 export const runSteerChannel = "run:steer";
 export const runUnfinishedChannel = "run:unfinished";
 export const runUpdateChannel = "run:update";
+export const boardUpdateChannel = "board:update";
 export const runHistoryChannel = "run:history";
 export const runHistoryOpenChannel = "run:historyOpen";
 export const runHistoryRefreshChannel = "run:historyRefresh";

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import { budgetExceededMessage, type ApprovalDecision, type NodeRunStatus, type PendingApproval, type RunUpdate, type WorkflowRunResult } from "@shared/runs";
+import { budgetExceededMessage, type ApprovalDecision, type BoardTask, type NodeRunStatus, type PendingApproval, type RunUpdate, type WorkflowRunResult } from "@shared/runs";
 import { useWorkflowStore } from "./workflow-store";
 
 type RunState = {
@@ -11,6 +11,7 @@ type RunState = {
   workflowRunning: boolean;
   unfinishedThreadId: string | null;
   approvals: PendingApproval[];
+  tasks: BoardTask[];
   budgetMessage: string;
   historyRevision: number;
   start: (nodeId: string) => Promise<void>;
@@ -33,6 +34,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   workflowRunning: false,
   unfinishedThreadId: null,
   approvals: [],
+  tasks: [],
   budgetMessage: "",
   historyRevision: 0,
   async start(nodeId) {
@@ -101,6 +103,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       workspacePath: null,
       logsByNode: {},
       approvals: [],
+      tasks: [],
       budgetMessage: "",
       statusByNode: Object.fromEntries(workflow.nodes.map((node) => [node.id, "queued" as const])),
     });
@@ -197,6 +200,7 @@ export const useRunStore = create<RunState>((set, get) => ({
     const result = await window.swarmy.runs.fork(workflow, threadId, checkpointId);
     set({
       statusByNode: result.statuses,
+      tasks: [],
       unfinishedThreadId: result.threadId,
       log: "",
       budgetMessage: "",

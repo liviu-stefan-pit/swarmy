@@ -1,3 +1,4 @@
+import type { BoardTask } from "@shared/runs";
 import type {
   AgentRuntime,
   CreateAgentRequest,
@@ -22,6 +23,7 @@ export interface FakePromptScript {
   error?: string;
   hold?: boolean;
   handoff?: Record<string, unknown>;
+  task?: BoardTask;
   steer?: SteerAck;
   usage?: { totalTokens: number };
   /** Present only when this script reports a cost, including a real zero. */
@@ -201,6 +203,18 @@ export class FakeRun implements RuntimeRun {
   }
 
   async *stream(): AsyncIterable<RuntimeEvent> {
+    const taskTool = this.customTools?.update_task;
+    const scriptedTask = this.script.task;
+    if (scriptedTask && taskTool) {
+      const args: Record<string, unknown> = {
+        id: scriptedTask.id,
+        owner: scriptedTask.owner,
+        status: scriptedTask.status,
+        summary: scriptedTask.summary,
+      };
+      await taskTool.execute(args);
+      yield { type: "tool", name: "update_task", status: "completed" };
+    }
     const tool = this.customTools?.submit_handoff;
     if (this.script.handoff && tool) {
       await tool.execute(this.script.handoff);
