@@ -8,6 +8,12 @@ import {
   pendingApprovalSchema,
   runCancelChannel,
   runCancelPayloadSchema,
+  runCheckpointSchema,
+  runCheckpointsChannel,
+  runCheckpointsPayloadSchema,
+  runForkChannel,
+  runForkPayloadSchema,
+  runForkResultSchema,
   runHistoryChannel,
   runHistoryDetailSchema,
   runHistoryEntrySchema,
@@ -158,6 +164,14 @@ const swarmy: SwarmyApi = {
     async refreshHistory(threadId) {
       const parsed = runHistoryOpenPayloadSchema.parse({ threadId });
       return runHistoryDetailSchema.parse(await ipcRenderer.invoke(runHistoryRefreshChannel, parsed));
+    },
+    async checkpoints(workflow, threadId) {
+      const parsed = runCheckpointsPayloadSchema.parse({ workflow, threadId });
+      return runCheckpointSchema.array().parse(await ipcRenderer.invoke(runCheckpointsChannel, parsed));
+    },
+    async fork(workflow, threadId, checkpointId) {
+      const parsed = runForkPayloadSchema.parse({ workflow, threadId, checkpointId });
+      return runForkResultSchema.parse(await ipcRenderer.invoke(runForkChannel, parsed));
     },
     async unfinished(workflowId) {
       const parsed = runUnfinishedPayloadSchema.parse({ workflowId });

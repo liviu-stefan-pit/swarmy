@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import type { RunHistoryDetail, RunHistoryEntry } from "@shared/runs";
+import type { RunCheckpoint, RunHistoryDetail, RunHistoryEntry } from "@shared/runs";
 import { budgetExceededMessage } from "@shared/runs";
 import { CollapseControl } from "./PanelChrome";
 import { usePanelLayoutStore } from "./panel-layout-store";
@@ -50,19 +50,30 @@ function transcriptOf(detail: RunHistoryDetail): string {
   return text.length > 0 ? text : "No transcript stored.";
 }
 
+function checkpointWhen(time: string): string {
+  const date = new Date(time);
+  if (Number.isNaN(date.getTime())) {
+    return time;
+  }
+  return date.toLocaleString();
+}
+
 export function RunHistory() {
-  const workflowId = useWorkflowStore((state) => state.workflow.id);
+  const workflow = useWorkflowStore((state) => state.workflow);
   const historyRevision = useRunStore((state) => state.historyRevision);
   const [runs, setRuns] = useState<RunHistoryEntry[]>([]);
   const [selectedId, setSelectedId] = useState("");
   const [detail, setDetail] = useState<RunHistoryDetail | undefined>();
+  const [checkpoints, setCheckpoints] = useState<RunCheckpoint[]>([]);
+  const [selectedCheckpoint, setSelectedCheckpoint] = useState("");
   const [error, setError] = useState("");
   const [refreshing, setRefreshing] = useState(false);
+  const [forking, setForking] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
     void window.swarmy.runs
-      .history(workflowId)
+      .history(workflow.id)
       .then((listed) => {
         if (cancelled) {
           return;
@@ -70,6 +81,8 @@ export function RunHistory() {
         setRuns(listed);
         setSelectedId("");
         setDetail(undefined);
+        setCheckpoints([]);
+        setSelectedCheckpoint("");
         setError("");
       })
       .catch((caught: unknown) => {
@@ -80,19 +93,27 @@ export function RunHistory() {
     return () => {
       cancelled = true;
     };
-  }, [historyRevision, workflowId]);
+  }, [historyRevision, workflow.id]);
 
   async function openRun(threadId: string): Promise<void> {
     setSelectedId(threadId);
+    setCheckpoints([]);
+    setSelectedCheckpoint("");
     if (threadId.length === 0) {
       setDetail(undefined);
       return;
     }
     try {
-      setDetail(await window.swarmy.runs.openHistory(threadId));
+      const [opened, listed] = await Promise.all([
+        window.swarmy.runs.openHistory(threadId),
+        window.swarmy.runs.checkpoints(workflow, threadId),
+      ]);
+      setDetail(opened);
+      setCheckpoints(listed);
       setError("");
     } catch (caught) {
       setDetail(undefined);
+      setCheckpoints([]);
       setError(errorText(caught));
     }
   }
@@ -111,6 +132,25 @@ export function RunHistory() {
       setRefreshing(false);
     }
   }
+
+  async function forkSelected(): Promise<void> {
+    if (selectedId.length === 0 || selectedCheckpoint.length === 0) {
+      return;
+    }
+    setForking(true);
+    try {
+      await useRunStore.getState().forkCheckpoint(selectedId, selectedCheckpoint);
+      setError("");
+    } catch (caught) {
+      setError(errorText(caught));
+    } finally {
+      setForking(false);
+    }
+  }
+
+  const lastCheckpoint = checkpoints[checkpoints.length - 1]?.checkpointId ?? "";
+  const selected = checkpoints.find((checkpoint) => checkpoint.checkpointId === selectedCheckpoint);
+  const canFork = selectedCheckpoint.length > 0 && selectedCheckpoint !== lastCheckpoint && !forking;
 
   const collapsed = usePanelLayoutStore((state) => state.historyCollapsed);
   const toggleHistory = usePanelLayoutStore((state) => state.toggleHistory);
@@ -164,6 +204,48 @@ export function RunHistory() {
       {collapsed ? null : (
         <>
           {error ? <p className="mt-1 text-sm text-red-300">{error}</p> : null}
+          {checkpoints.length > 0 ? (
+            <div className="mt-2 space-y-2">
+              <ol data-testid="checkpoint-timeline" className="flex flex-wrap gap-2">
+                {checkpoints.map((checkpoint) => (
+                  <li key={checkpoint.checkpointId}>
+                    <button
+                      type="button"
+                      data-testid="checkpoint"
+                      aria-pressed={checkpoint.checkpointId === selectedCheckpoint}
+                      className={`rounded border px-2 py-1 text-left text-sm ${
+                        checkpoint.checkpointId === selectedCheckpoint
+                          ? "border-sky-500 bg-sky-950 text-sky-100"
+                          : "border-zinc-700 text-zinc-200 hover:bg-zinc-800"
+                      }`}
+                      onClick={() => {
+                        setSelectedCheckpoint(checkpoint.checkpointId);
+                      }}
+                    >
+                      <span className="block font-medium">{checkpoint.label}</span>
+                      <span className="block text-xs text-zinc-400">{checkpointWhen(checkpoint.time)}</span>
+                    </button>
+                  </li>
+                ))}
+              </ol>
+              {selected?.workspacePath ? (
+                <p className="text-xs text-zinc-400">
+                  Worktree <span data-testid="checkpoint-worktree">{selected.workspacePath}</span>
+                </p>
+              ) : null}
+              <button
+                type="button"
+                data-testid="fork-checkpoint"
+                disabled={!canFork}
+                className="rounded border border-zinc-600 px-3 py-1 text-sm hover:bg-zinc-800 disabled:opacity-50"
+                onClick={() => {
+                  void forkSelected();
+                }}
+              >
+                Fork
+              </button>
+            </div>
+          ) : null}
           {detail ? (
             <div className="mt-2 space-y-1">
               {detail.status === "budget_exceeded" ? (

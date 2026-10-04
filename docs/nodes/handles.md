@@ -6,6 +6,8 @@ Phase 15 does not change this table. A workflow budget and run history are not h
 
 Phase 15.5 does not change this table. Removing a node also removes every edge whose source or target is that node. The other nodes stay.
 
+Phase 16 does not change this table. Forking a run does not add or remove a handle.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |

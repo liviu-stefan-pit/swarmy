@@ -60,6 +60,17 @@ export async function collectWorktreeDiff(cwd: string): Promise<WorktreeDiff> {
   return { files, patch };
 }
 
+export async function readHeadSha(cwd: string): Promise<string | undefined> {
+  const output = await tryGit(cwd, ["rev-parse", "HEAD"]);
+  const sha = output?.trim() ?? "";
+  return /^[0-9a-f]{40}$/.test(sha) ? sha : undefined;
+}
+
+export async function checkoutCommit(cwd: string, sha: string, branch: string): Promise<void> {
+  const safe = branch.replace(/[^A-Za-z0-9._-]+/g, "-").replace(/^-+|-+$/g, "") || "fork";
+  await git(cwd, ["checkout", "-B", `swarm/${safe}`, sha]);
+}
+
 export async function commitReviewedEdits(cwd: string, edits: readonly WorktreeEdit[]): Promise<string[]> {
   await ignoreAgentStore(cwd);
   const written: string[] = [];

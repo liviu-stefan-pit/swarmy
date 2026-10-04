@@ -1,5 +1,5 @@
 import { randomUUID } from "node:crypto";
-import type { BaseCheckpointSaver } from "@langchain/langgraph-checkpoint";
+import type { BaseCheckpointSaver, CheckpointMetadata, CheckpointTuple } from "@langchain/langgraph-checkpoint";
 import {
   Annotation,
   Command,
@@ -16,6 +16,7 @@ import {
   budgetExceededMessage,
   pendingApprovalSchema,
   type ApprovalDecision,
+  type NodeRunStatus,
   type PendingApproval,
 } from "@shared/runs";
 import type { Workflow, WorkflowNode } from "@shared/workflow";
@@ -24,7 +25,7 @@ import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { openRunCatalog, type RunCatalog } from "./run-catalog";
 import type { AgentRuntime, RuntimeCustomTool, RuntimeMcpServer, SteerAck } from "./runtime";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
-import { collectWorktreeDiff, commitReviewedEdits, safeRelative } from "./worktree-diff";
+import { checkoutCommit, collectWorktreeDiff, commitReviewedEdits, readHeadSha, safeRelative } from "./worktree-diff";
 import type { AgentWorkspace, WorkspaceManager } from "./workspace-manager";
 
 const handoffPayloadSchema = z.object({
@@ -54,6 +55,11 @@ export interface Handoff {
 export interface NodeSnapshot {
   status: "completed" | "failed" | "cancelled";
   handoff: Handoff;
+  commitSha?: string;
+  workspacePath?: string;
+  workspaceId?: string;
+  branch?: string;
+  repositoryPath?: string;
 }
 
 type ApprovalRoute = "approve" | "reject" | "fail";
@@ -377,6 +383,198 @@ export function resumeWorkflow(input: WorkflowRunInput & { threadId: string }): 
   return startWorkflowRun({ ...input, resume: true }).done;
 }
 
+export interface RunCheckpoint {
+  checkpointId: string;
+  nodeId: string;
+  label: string;
+  time: string;
+  commitSha?: string;
+  workspacePath?: string;
+  workspaceId?: string;
+  repositoryPath?: string;
+}
+
+export async function listRunCheckpoints(input: {
+  workflow: Workflow;
+  checkpointer: BaseCheckpointSaver;
+  threadId: string;
+}): Promise<RunCheckpoint[]> {
+  const { workflow } = validateWorkflow(input.workflow);
+  const compiled = compileSwarm(workflow, idleContext(input.threadId), input.checkpointer);
+  const history: CheckpointView[] = [];
+  for await (const state of compiled.getStateHistory({ configurable: { thread_id: input.threadId } })) {
+    history.push(state);
+  }
+  history.reverse();
+  const labels = new Map(workflow.nodes.map((node) => [node.id, node.data.label]));
+  const seen = new Set<string>();
+  const checkpoints: RunCheckpoint[] = [];
+  for (const state of history) {
+    const snapshots = state.values.snapshots ?? {};
+    const checkpointId = state.config.configurable?.checkpoint_id;
+    if (!checkpointId) {
+      continue;
+    }
+    const arrived = Object.keys(snapshots).filter((nodeId) => !seen.has(nodeId));
+    for (const nodeId of arrived) {
+      seen.add(nodeId);
+      const snapshot = snapshots[nodeId];
+      if (!snapshot) {
+        continue;
+      }
+      checkpoints.push({
+        checkpointId,
+        nodeId,
+        label: labels.get(nodeId) ?? nodeId,
+        time: state.createdAt ?? "",
+        ...(snapshot.commitSha ? { commitSha: snapshot.commitSha } : {}),
+        ...(snapshot.workspacePath ? { workspacePath: snapshot.workspacePath } : {}),
+        ...(snapshot.workspaceId ? { workspaceId: snapshot.workspaceId } : {}),
+        ...(snapshot.repositoryPath ? { repositoryPath: snapshot.repositoryPath } : {}),
+      });
+    }
+  }
+  return checkpoints;
+}
+
+export async function forkRun(input: {
+  workflow: Workflow;
+  checkpointer: BaseCheckpointSaver;
+  threadId: string;
+  checkpointId: string;
+  workspaces: WorkspaceManager;
+}): Promise<{ threadId: string; nextNodeId: string; statuses: Record<string, NodeRunStatus> }> {
+  const { workflow } = validateWorkflow(input.workflow);
+  const compiled = compileSwarm(workflow, idleContext(input.threadId), input.checkpointer);
+  const selected = await compiled.getState({
+    configurable: {
+      thread_id: input.threadId,
+      checkpoint_ns: "",
+      checkpoint_id: input.checkpointId,
+    },
+  });
+  const nextNodeId = selected.next[0];
+  if (!nextNodeId) {
+    throw new Error("That checkpoint has no next node");
+  }
+  const newThreadId = randomUUID();
+  await copyCheckpointChain(input.checkpointer, input.threadId, input.checkpointId, newThreadId);
+  await compiled.updateState(
+    {
+      configurable: {
+        thread_id: newThreadId,
+        checkpoint_ns: "",
+        checkpoint_id: input.checkpointId,
+      },
+    },
+    null,
+    "__copy__",
+  );
+  const forked = await compiled.getState({ configurable: { thread_id: newThreadId, checkpoint_ns: "" } });
+  const snapshots = forked.values.snapshots ?? {};
+  const statuses: Record<string, NodeRunStatus> = {};
+  for (const node of workflow.nodes) {
+    statuses[node.id] = snapshots[node.id]?.status ?? "idle";
+  }
+  const listed = await listRunCheckpoints({
+    workflow,
+    checkpointer: input.checkpointer,
+    threadId: input.threadId,
+  });
+  const match = listed.find((item) => item.checkpointId === input.checkpointId);
+  if (match?.workspacePath && match.commitSha) {
+    const mode = match.repositoryPath ? "repo" : "managed";
+    if (match.workspaceId) {
+      await input.workspaces.locate({
+        id: match.workspaceId,
+        mode,
+        ...(match.repositoryPath ? { repositoryPath: match.repositoryPath } : {}),
+      });
+    }
+    await checkoutCommit(match.workspacePath, match.commitSha, newThreadId);
+  }
+  const catalog = catalogFor(input.checkpointer);
+  catalog?.markRunning(newThreadId, workflow.id);
+  catalog?.close();
+  return { threadId: newThreadId, nextNodeId, statuses };
+}
+
+async function copyCheckpointChain(
+  checkpointer: BaseCheckpointSaver,
+  fromThread: string,
+  checkpointId: string,
+  toThread: string,
+): Promise<void> {
+  const chain: CheckpointTuple[] = [];
+  const seen = new Set<string>();
+  let current: string | undefined = checkpointId;
+  while (current && !seen.has(current)) {
+    seen.add(current);
+    const tuple = await checkpointer.getTuple({
+      configurable: { thread_id: fromThread, checkpoint_ns: "", checkpoint_id: current },
+    });
+    if (!tuple) {
+      break;
+    }
+    chain.push(tuple);
+    const parentId = tuple.parentConfig?.configurable?.checkpoint_id;
+    current = typeof parentId === "string" ? parentId : undefined;
+  }
+  chain.reverse();
+  for (const tuple of chain) {
+    const parentId = tuple.parentConfig?.configurable?.checkpoint_id;
+    await checkpointer.put(
+      {
+        configurable: {
+          thread_id: toThread,
+          checkpoint_ns: "",
+          ...(typeof parentId === "string" ? { checkpoint_id: parentId } : {}),
+        },
+      },
+      tuple.checkpoint,
+      metadataOf(tuple),
+      {},
+    );
+    await copyWrites(checkpointer, tuple, toThread);
+  }
+}
+
+function metadataOf(tuple: CheckpointTuple): CheckpointMetadata {
+  if (tuple.metadata) {
+    return tuple.metadata;
+  }
+  return { source: "loop", step: 0, parents: {} };
+}
+
+async function copyWrites(
+  checkpointer: BaseCheckpointSaver,
+  tuple: CheckpointTuple,
+  toThread: string,
+): Promise<void> {
+  const byTask = new Map<string, [string, unknown][]>();
+  for (const write of tuple.pendingWrites ?? []) {
+    const taskId = write[0];
+    const channel = write[1];
+    const value = write[2];
+    const list = byTask.get(taskId) ?? [];
+    list.push([channel, value]);
+    byTask.set(taskId, list);
+  }
+  for (const [taskId, writes] of byTask) {
+    await checkpointer.putWrites(
+      {
+        configurable: {
+          thread_id: toThread,
+          checkpoint_ns: "",
+          checkpoint_id: tuple.checkpoint.id,
+        },
+      },
+      writes,
+      taskId,
+    );
+  }
+}
+
 interface RunContext {
   runtime: AgentRuntime;
   apiKey: string;
@@ -461,7 +659,7 @@ async function executeApproval(
     .map((id) => state.snapshots?.[id])
     .filter((snapshot): snapshot is NodeSnapshot => snapshot !== undefined);
   const summary = approvalSummary(node, completed);
-  const reviewed = await reviewFiles(input, workflow, parents);
+  const reviewed = await reviewFiles(input, workflow, parents, state);
   const files = reviewed.map((file) => ({ path: file.path, original: file.original, modified: file.modified }));
   const workspacePath = reviewed[0]?.workspacePath;
   input.onUpdate?.({
@@ -551,15 +749,17 @@ async function executeAgent(
   };
 
   report("running", "");
-  let workspace: Awaited<ReturnType<WorkspaceManager["provision"]>> | undefined;
+  let workspace: AgentWorkspace | undefined;
   try {
     const mode = node.data.workspaceMode ?? "managed";
-    workspace = await input.workspaces.provision({
-      id: workspaceId(input.threadId, node.id),
-      mode,
-      ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
-      ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
-    });
+    workspace =
+      reuseUpstreamWorkspace(input, workflow, node, state) ??
+      (await input.workspaces.provision({
+        id: workspaceId(input.threadId, node.id),
+        mode,
+        ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
+        ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
+      }));
     const workspacePath = workspace.path;
     let captured: Handoff | undefined;
     const submitHandoff: RuntimeCustomTool = {
@@ -636,7 +836,17 @@ async function executeAgent(
       files: [],
       blockers: [],
     };
-    return { snapshots: { [node.id]: { status: outcome.status, handoff } } };
+    const commitSha = outcome.status === "completed" ? await readHeadSha(workspace.path) : undefined;
+    const recorded: NodeSnapshot = {
+      status: outcome.status,
+      handoff,
+      workspacePath: workspace.path,
+      workspaceId: workspace.id,
+      ...(workspace.branch ? { branch: workspace.branch } : {}),
+      ...(workspace.repositoryPath ? { repositoryPath: workspace.repositoryPath } : {}),
+      ...(commitSha ? { commitSha } : {}),
+    };
+    return { snapshots: { [node.id]: recorded } };
   } catch (error) {
     const message = error instanceof Error && error.message ? error.message : "The node failed";
     const handoff: Handoff = { kind: "unstructured", summary: message, files: [], blockers: [] };
@@ -644,10 +854,8 @@ async function executeAgent(
     return { snapshots: { [node.id]: { status: "failed", handoff } } };
   } finally {
     input.sessions.delete(node.id);
-    if (workspace && keepsWorktree(workflow, node.id)) {
+    if (workspace) {
       input.retained.set(node.id, workspace);
-    } else if (workspace) {
-      await input.workspaces.teardown(workspace).catch(() => undefined);
     }
   }
 }
@@ -727,16 +935,28 @@ interface SwarmGraph {
 
 type StepInput = GraphValues | Command | null;
 
+interface CheckpointView {
+  next: string[];
+  values: GraphValues;
+  createdAt?: string;
+  config: { configurable?: { checkpoint_id?: string; thread_id?: string } };
+  tasks?: { interrupts?: { value?: unknown }[] }[];
+}
+
 interface CompiledSwarm {
   invoke(
     input: StepInput,
     config: { configurable: { thread_id: string }; interruptAfter?: string[] },
   ): Promise<GraphValues>;
-  getState(config: { configurable: { thread_id: string } }): Promise<{
-    next: string[];
-    values: GraphValues;
-    tasks?: { interrupts?: { value?: unknown }[] }[];
-  }>;
+  getState(config: {
+    configurable: { thread_id: string; checkpoint_id?: string; checkpoint_ns?: string };
+  }): Promise<CheckpointView>;
+  getStateHistory(config: { configurable: { thread_id: string } }): AsyncIterable<CheckpointView>;
+  updateState(
+    config: { configurable: { thread_id: string; checkpoint_id?: string; checkpoint_ns?: string } },
+    values: null,
+    asNode?: string,
+  ): Promise<{ configurable?: { thread_id?: string; checkpoint_id?: string } }>;
 }
 
 function asSwarmGraph(graph: object): SwarmGraph {
@@ -1004,10 +1224,11 @@ async function reviewFiles(
   input: RunContext,
   workflow: Workflow,
   parents: readonly string[],
+  state: GraphValues,
 ): Promise<ReviewedFile[]> {
   const files: ReviewedFile[] = [];
   for (const parentId of parents) {
-    const workspace = await agentWorkspace(input, workflow, parentId);
+    const workspace = await agentWorkspace(input, workflow, parentId, state.snapshots?.[parentId]);
     if (!workspace) {
       continue;
     }
@@ -1027,6 +1248,7 @@ async function agentWorkspace(
   input: RunContext,
   workflow: Workflow,
   nodeId: string,
+  snapshot?: NodeSnapshot,
 ): Promise<AgentWorkspace | undefined> {
   const kept = input.retained.get(nodeId);
   if (kept) {
@@ -1037,6 +1259,15 @@ async function agentWorkspace(
     return undefined;
   }
   const mode = node.data.workspaceMode ?? "managed";
+  if (snapshot?.workspacePath && snapshot.workspaceId) {
+    return {
+      id: snapshot.workspaceId,
+      mode,
+      path: snapshot.workspacePath,
+      ...(snapshot.branch ? { branch: snapshot.branch } : {}),
+      ...(snapshot.repositoryPath ? { repositoryPath: snapshot.repositoryPath } : {}),
+    };
+  }
   const located = await input.workspaces.locate({
     id: workspaceId(input.threadId, nodeId),
     mode,
@@ -1074,9 +1305,45 @@ async function commitReview(
   return committed;
 }
 
-function keepsWorktree(workflow: Workflow, nodeId: string): boolean {
-  const nodesById = new Map(workflow.nodes.map((node) => [node.id, node]));
-  return (successors(workflow).get(nodeId) ?? []).some((id) => nodesById.get(id)?.type === "approval");
+function reuseUpstreamWorkspace(
+  input: RunContext,
+  workflow: Workflow,
+  node: Extract<WorkflowNode, { type: "agent" }>,
+  state: GraphValues,
+): AgentWorkspace | undefined {
+  const parents = predecessors(workflow).get(node.id) ?? [];
+  const parentId = parents.length === 1 ? parents[0] : undefined;
+  if (!parentId) {
+    return undefined;
+  }
+  const parent = workflow.nodes.find((item) => item.id === parentId);
+  if (!parent || parent.type !== "agent") {
+    return undefined;
+  }
+  const downstream = successors(workflow).get(parentId) ?? [];
+  if (downstream.length !== 1 || downstream[0] !== node.id) {
+    return undefined;
+  }
+  const mode = node.data.workspaceMode ?? "managed";
+  const parentMode = parent.data.workspaceMode ?? "managed";
+  if (mode !== parentMode || (mode !== "repo" && mode !== "managed")) {
+    return undefined;
+  }
+  const snapshot = state.snapshots?.[parentId];
+  if (!snapshot?.workspacePath || !snapshot.workspaceId) {
+    const kept = input.retained.get(parentId);
+    if (!kept || kept.mode !== mode) {
+      return undefined;
+    }
+    return kept;
+  }
+  return {
+    id: snapshot.workspaceId,
+    mode,
+    path: snapshot.workspacePath,
+    ...(snapshot.branch ? { branch: snapshot.branch } : {}),
+    ...(snapshot.repositoryPath ? { repositoryPath: snapshot.repositoryPath } : {}),
+  };
 }
 
 function idleContext(threadId: string): RunContext {

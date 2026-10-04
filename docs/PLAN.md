@@ -6,7 +6,7 @@ Research that led here is in [docs/research](research). Where those PDFs disagre
 
 ## How to run a phase
 
-1. Find the first phase below whose status is `[ ]`. Skip Phase 15.5 until Phase 15 is `[x]`. Skip Phase 15.6 until Phase 15.5 is `[x]`.
+1. Find the first phase below whose status is `[ ]`. Skip Phase 15.5 until Phase 15 is `[x]`. Skip Phase 15.6 until Phase 15.5 is `[x]`. Skip Phase 17.5 until Phase 17 is `[x]`.
 2. Open a **new** Cursor chat (do not continue an old one).
 3. Paste that phase's **Prompt** block, unchanged.
 4. The agent follows `.cursor/skills/start-phase/SKILL.md`, writes failing tests, then implements.
@@ -37,8 +37,9 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 15 | Observability and budgets | [x] | phase-15 | 2026-10-04 |
 | 15.5 | Delete a node | [x] | phase-15.5 | 2026-10-04 |
 | 15.6 | Resize and collapse panels | [x] | phase-15.6 | 2026-10-04 |
-| 16 | Time travel | [ ] | | |
+| 16 | Time travel | [x] | phase-16 | 2026-10-04 |
 | 17 | Shared task board | [ ] | | |
+| 17.5 | Token use | [ ] | | |
 | 18 | Planner node | [ ] | | |
 | 19 | Merge node | [ ] | | |
 | 20 | Inputs and MCP | [ ] | | |
@@ -297,6 +298,16 @@ The handle on the top of the stack under the canvas moves with the pointer. Drag
 Collapsed **Nodes** and **Inspector** are a narrow icon rail. The heading text is not left behind. Collapsing **Inbox**, **Run history**, or **Run log** removes that section's share of the stack. The stack does not keep the empty area. The **Run history** collapse control is on the right of its row, same as **Inbox** and **Run log**.
 
 Why: the first layout grew the stack when the handle moved down, so the handle ran away from the pointer. It could cover the header. A collapsed side panel still showed its title, and a collapsed section under the canvas left the old gap in place. The history control sat beside the title.
+
+### D18 — A chain shares one worktree so a fork can drop later commits
+
+Date: 2026-10-04. Status: accepted.
+
+Agents that run one after another, joined by a single edge, reuse the upstream agent's git worktree and commit on that branch. Parallel agents still get their own worktrees (D7). A workflow run leaves those worktrees on disk so a later fork can check one out. A card **Run** still removes its worktree when that one agent finishes.
+
+Fork checks out the commit recorded for the selected checkpoint on a new branch. The original branch stays at its tip. The original run stays in history.
+
+Why: rewinding has to remove the later files from the worktree you were looking at. Separate worktrees never held those later commits, so a checkout there would not change what you see.
 
 ## Conventions
 
@@ -1354,8 +1365,23 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Run three agents that each commit a file in their worktree.
-2. Fork at the first checkpoint. The later files are gone from that worktree. Resume runs only the later agents.
+This uses a real Cursor agent. The repository is `C:\prod\scratch-repo`. Leave **Token budget** empty. Leave **Guardrails** unchecked. The three agents share one worktree because they run one after another (decision D18).
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Time travel` and press Tab. The **Workflows** dropdown should show that name.
+4. From the **Nodes** list, drag **Agent** onto the canvas three times, left to right. The cards read **Agent**, **Agent 2**, and **Agent 3**.
+5. Connect the blue **Text** dots only, in a line. On **Agent**, drag the blue **Text** dot on the right to the blue **Text** dot on the left of **Agent 2**. Then from **Agent 2** to **Agent 3**. You should see two edges. If a red message appears at the top of the canvas, that wire did not stick.
+6. Click **Agent**. In the inspector, set **Workspace mode** to `repo`. A **Repository** field appears. Paste `C:\prod\scratch-repo`. Set **Task prompt** to `Create a file named first.txt containing the single word first, then commit it with the message first. Do not push. Do not edit other files.`
+7. Click **Agent 2**. Set **Workspace mode** to `repo`. Leave the repository as `C:\prod\scratch-repo`. Set **Task prompt** to `Create a file named second.txt containing the single word second, then commit it with the message second. Do not push. Do not edit other files.`
+8. Click **Agent 3**. Set **Workspace mode** to `repo`. Set **Task prompt** to `Create a file named third.txt containing the single word third, then commit it with the message third. Do not push. Do not edit other files.`
+9. Leave **Token budget** empty and **Guardrails** unchecked on all three. In the toolbar, click **Run**. Do not click **Run** on a card.
+10. Wait until every pill reads **completed**. The **Run log** for **Agent 3** should mention the commit. It should not say the run was cancelled.
+11. Open the **History** dropdown under the canvas and choose the newest run. Under the log, a timeline shows **Agent**, then **Agent 2**, then **Agent 3**.
+12. Click **Agent** on that timeline. A **Worktree** path appears. Open that folder in File Explorer. You should see `first.txt`, `second.txt`, and `third.txt`.
+13. With **Agent** still selected on the timeline, click **Fork**. The original run stays in the **History** dropdown. The pills change: **Agent** stays **completed**, and **Agent 2** and **Agent 3** read **idle**. Look at the same worktree folder again. `first.txt` is still there. `second.txt` and `third.txt` are gone.
+14. The toolbar shows **Resume**. Click **Resume**. **Agent** stays **completed** and does not go back through **running**. **Agent 2** goes **running**, then **completed**. **Agent 3** goes **running**, then **completed**.
+15. Open the worktree folder once more. `second.txt` and `third.txt` are back, from the new run. In **History**, the original run is still listed, and a second run is listed for the fork.
 
 **Prompt.**
 
@@ -1370,7 +1396,12 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A finished run lists one checkpoint per completed node, in order: node id, label, and time. **History** shows that timeline. **Fork** copies the LangGraph checkpoint onto a new thread with `updateState(..., "__copy__")`, which records a fork checkpoint. The original thread and its history row stay as they were.
+- Nodes that had already finished keep that status on the fork. Nodes after the checkpoint return to `idle`. **Resume** runs those later nodes and does not run the checkpoint's node again.
+- When a node completes, the checkpoint stores that worktree's commit SHA. Fork checks the worktree out at that SHA on a new branch. The original branch stays at its tip.
+- Agents joined by a single edge share one git worktree, so later commits land on the same branch and a fork can drop them from the working tree (decision D18). Parallel agents still get their own worktrees. A workflow run leaves the worktree on disk. A card **Run** still removes its worktree.
+- Node docs updated (decision D13): the index, `handles.md` (handles did not change), and `docs/nodes/agent.md`.
+- `npm run verify` exited 0.
 
 ---
 
@@ -1411,6 +1442,67 @@ Follow .cursor/skills/start-phase/SKILL.md, then implement only Phase 17 in docs
 Write the tests listed in that phase and show them failing before you write the implementation.
 Expose the board only through the two custom tools named in the phase.
 When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
+```
+
+**Completion notes.**
+
+- _Empty until the phase agent finishes._
+
+---
+
+## Phase 17.5 — Token use
+
+**Start after.** Phase 17 is tagged `phase-17`. If that tag is missing, stop. Do not implement this phase inside Phase 17.
+
+**Goal.** Explain the tens of thousands of tokens on a short local-agent task, and reduce what Swarmy sends or how it presents that number, without hiding what the SDK reported.
+
+**Why.** Creating one file and committing it cost about 80,000 `totalTokens` per agent on the Phase 16 manual run. Three agents summed to 238,481. The fork re-ran two agents and summed to 158,809. A Phase 15 reply of one word was already 40,018. The saved log for those nodes is about a thousand characters. The history line is that large because it adds the SDK totals. It is not counting an agent twice.
+
+**How this phase runs.** This phase starts in Cursor **Plan mode**. The first action is to switch to Plan mode and stay there until the user accepts the plan in that chat. In Plan mode, do not write production code, do not add tests, and do not add a Decision. The plan names one change, the tests that lock it, and the manual steps. After the user accepts it, leave Plan mode, follow `.cursor/skills/start-phase/SKILL.md`, and implement only that change. If the accepted plan replaces the tests below, edit this section first and say why, then write the failing tests.
+
+**Known facts.** Start from these. Do not call the Cursor API to remeasure them.
+
+- SDK `totalTokens` is `inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens`. `reasoningTokens` are not included. Swarmy keeps only the total, from `run.usage`, in `tokenUsage` in `src/engine/cursor-sdk-runtime.ts`. `run_nodes.total_tokens` has no column for the four parts, so a finished run cannot be split after the fact.
+- History adds those totals (`tokenLabel` in `src/renderer/src/RunHistory.tsx`). The Phase 16 rows were agent 1 `78708`, agent 2 `80019`, agent 3 `79754`. The fork rows were agent 2 `74586` and agent 3 `84223`. Those sums are the history lines. Agent 1 is absent from the fork on purpose.
+- Dollar cost is `chargedCents` from `agent.getUsage()`. When it is missing, the line stays `cost pending` (decision D16). Do not store that as `$0.00`.
+- A token budget still adds the SDK `totalTokens` values (decision D16). A missing token count is not zero and does not cancel later nodes. Change that only if the accepted plan records a new Decision.
+
+**In scope.**
+
+- Read the SDK usage fields and the path that stores them. Say how much of the ~80,000 is input, output, cache read, and cache write, from those types and from a run already on disk. Do not start a live agent.
+- List what Swarmy controls: the prompt text, the tools attached to the agent, a new agent per node, the system prompt, and whether history and the token budget show the same total.
+- The plan recommends one change. Either send less to the model, or show the split so cache reads are visible next to the SDK total. Say what the change does not touch.
+- After acceptance, implement that change in this phase only.
+
+**Out of scope.** LangGraph, time travel, the task board, the planner, and merge. Tests that call the Cursor API or the network. Inventing a dollar cost. Treating a missing token count as zero. Dropping cache tokens from the stored total while the budget still depends on them, unless the accepted plan says so and adds a Decision. Do not renumber Phase 18.
+
+**Tag.** `phase-17.5`. Do not renumber Phase 18.
+
+**Tests to write first.** Write these only after the user accepts the plan. Until then they are the default the plan may keep or replace.
+
+1. A runtime usage of input, output, cache read, and cache write stores `totalTokens` as their sum, and stores each part the plan keeps.
+2. History for three nodes shows the sum of the stored totals, and shows the cache-read portion when the plan shows that split.
+3. A missing usage leaves tokens unset. It does not store 0, and a set token budget does not cancel the next node because of that gap.
+
+**Acceptance.** The accepted plan matches the tests in this phase. Verify passes. On a short local task, the history line is lower for a reason the plan measured, or it shows cache reads beside the SDK total.
+
+**Manual test.**
+
+The click path depends on the accepted change, so the plan writes these steps before any code. They replace this paragraph. They use `C:\prod\scratch-repo` if a real agent is required, leave **Token budget** empty unless the plan is about the budget, and tell the user which number to read in **History**.
+
+**Prompt.**
+
+```text
+You are implementing Swarmy Phase 17.5 — Token use.
+
+Switch to Cursor Plan mode before you read further or edit anything. Stay in Plan mode until I accept the plan.
+Follow .cursor/skills/start-phase/SKILL.md only for reading the plan and this phase. Do not write code yet.
+Start only after Phase 17 is tagged phase-17. If it is not, stop.
+Investigate only Phase 17.5 in docs/PLAN.md. Use the known facts there. Do not call the Cursor API.
+The plan must name one change, the tests that lock it, and the manual steps. Do not add a Decision until I accept a change that needs one.
+When I accept the plan, leave Plan mode, write the failing tests, then implement only that change.
+When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
+Do not renumber Phase 18.
 ```
 
 **Completion notes.**

@@ -7,7 +7,7 @@ import { budgetExceededMessage } from "@shared/runs";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
-import { listPendingApprovals, startWorkflowRun, type WorkflowRunHandle } from "./orchestrator";
+import { forkRun, listPendingApprovals, listRunCheckpoints, startWorkflowRun, type WorkflowRunHandle } from "./orchestrator";
 import { openRunCatalog, unfinishedThread, type RunCatalog } from "./run-catalog";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
@@ -139,6 +139,16 @@ export function attachEngine(
 
     if (message.type === "run.historyRefresh") {
       void answerHistoryRefresh(port, getRuntime(), message, getCheckpointer);
+      return;
+    }
+
+    if (message.type === "run.checkpoints") {
+      void answerCheckpoints(port, message, getCheckpointer);
+      return;
+    }
+
+    if (message.type === "run.fork") {
+      void answerFork(port, message, getCheckpointer, getWorkspaces);
       return;
     }
 
@@ -523,6 +533,51 @@ function openCatalog(getCheckpointer: () => SqliteCheckpointer): RunCatalog | un
     return openRunCatalog(getCheckpointer().databasePath);
   } catch {
     return undefined;
+  }
+}
+
+async function answerCheckpoints(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.checkpoints" }>,
+  getCheckpointer: () => SqliteCheckpointer,
+): Promise<void> {
+  try {
+    const checkpoints = await listRunCheckpoints({
+      workflow: message.workflow,
+      checkpointer: getCheckpointer(),
+      threadId: message.threadId,
+    });
+    port.postMessage({ type: "run.checkpointsResult", id: message.id, checkpoints });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not list checkpoints";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  }
+}
+
+async function answerFork(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.fork" }>,
+  getCheckpointer: () => SqliteCheckpointer,
+  getWorkspaces: () => WorkspaceManager,
+): Promise<void> {
+  try {
+    const forked = await forkRun({
+      workflow: message.workflow,
+      checkpointer: getCheckpointer(),
+      threadId: message.threadId,
+      checkpointId: message.checkpointId,
+      workspaces: getWorkspaces(),
+    });
+    port.postMessage({
+      type: "run.forkResult",
+      id: message.id,
+      threadId: forked.threadId,
+      nextNodeId: forked.nextNodeId,
+      statuses: forked.statuses,
+    });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not fork the run";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
   }
 }
 

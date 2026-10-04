@@ -17,6 +17,7 @@ type RunState = {
   startWorkflow: () => Promise<void>;
   resume: () => Promise<void>;
   refreshUnfinished: (workflowId: string) => Promise<void>;
+  forkCheckpoint: (threadId: string, checkpointId: string) => Promise<void>;
   decide: (decision: ApprovalDecision) => Promise<void>;
   cancel: (nodeId?: string) => Promise<void>;
   cancelWorkflow: () => Promise<void>;
@@ -187,6 +188,20 @@ export const useRunStore = create<RunState>((set, get) => ({
     } catch {
       set({ unfinishedThreadId: null });
     }
+  },
+  async forkCheckpoint(threadId, checkpointId) {
+    if (get().workflowRunning || get().activeNodeId) {
+      throw new Error("Another agent is already running.");
+    }
+    const workflow = useWorkflowStore.getState().workflow;
+    const result = await window.swarmy.runs.fork(workflow, threadId, checkpointId);
+    set({
+      statusByNode: result.statuses,
+      unfinishedThreadId: result.threadId,
+      log: "",
+      budgetMessage: "",
+      historyRevision: get().historyRevision + 1,
+    });
   },
   async decide(decision) {
     const reason = decision.reason?.trim() ?? "";

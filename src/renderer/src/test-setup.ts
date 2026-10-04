@@ -113,6 +113,16 @@ const swarmy: SwarmyApi = {
         nodes: [],
       });
     },
+    checkpoints() {
+      return Promise.resolve([]);
+    },
+    fork() {
+      return Promise.resolve({
+        threadId: "thread-2",
+        nextNodeId: "third",
+        statuses: {},
+      });
+    },
     resume() {
       return Promise.resolve({ statuses: {} });
     },

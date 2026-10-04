@@ -39,6 +39,8 @@ const resultByRequest = {
   "run.history": "run.historyResult",
   "run.historyOpen": "run.historyOpenResult",
   "run.historyRefresh": "run.historyRefreshResult",
+  "run.checkpoints": "run.checkpointsResult",
+  "run.fork": "run.forkResult",
   "workflow.run": "workflow.runDone",
   "workflow.resume": "workflow.runDone",
   "workflow.cancel": "workflow.cancelResult",
@@ -240,6 +242,8 @@ function isEngineReply(message: EngineMessage): message is EngineSuccess | Engin
     message.type === "run.historyResult" ||
     message.type === "run.historyOpenResult" ||
     message.type === "run.historyRefreshResult" ||
+    message.type === "run.checkpointsResult" ||
+    message.type === "run.forkResult" ||
     message.type === "run.failed" ||
     message.type === "workflow.runDone" ||
     message.type === "workflow.cancelResult" ||
@@ -265,6 +269,8 @@ function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessag
       return { timeoutMs: CANCEL_TIMEOUT_MS, timeoutMessage: "Cancel timed out" };
     case "run.historyRefresh":
       return { timeoutMs: TEST_TIMEOUT_MS, timeoutMessage: "Cost refresh timed out" };
+    case "run.checkpoints":
+    case "run.fork":
     case "run.unfinished":
     case "run.history":
     case "run.historyOpen":

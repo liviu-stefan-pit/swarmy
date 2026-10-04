@@ -127,6 +127,32 @@ export const runHistoryOpenPayloadSchema = z.object({
   threadId: z.string().min(1),
 });
 
+export const runCheckpointSchema = z.object({
+  checkpointId: z.string().min(1),
+  nodeId: z.string().min(1),
+  label: z.string().min(1),
+  time: z.string(),
+  commitSha: z.string().regex(/^[0-9a-f]{40}$/).optional(),
+  workspacePath: z.string().min(1).optional(),
+});
+
+export const runCheckpointsPayloadSchema = z.object({
+  workflow: workflowSchema,
+  threadId: z.string().min(1),
+});
+
+export const runForkPayloadSchema = z.object({
+  workflow: workflowSchema,
+  threadId: z.string().min(1),
+  checkpointId: z.string().min(1),
+});
+
+export const runForkResultSchema = z.object({
+  threadId: z.string().min(1),
+  nextNodeId: z.string().min(1),
+  statuses: z.record(z.string(), nodeRunStatusSchema),
+});
+
 export const workflowRunResultSchema = z.object({
   statuses: z.record(z.string(), nodeRunStatusSchema),
   runStatus: runRecordStatusSchema.optional(),
@@ -141,6 +167,8 @@ export const runUpdateChannel = "run:update";
 export const runHistoryChannel = "run:history";
 export const runHistoryOpenChannel = "run:historyOpen";
 export const runHistoryRefreshChannel = "run:historyRefresh";
+export const runCheckpointsChannel = "run:checkpoints";
+export const runForkChannel = "run:fork";
 export const workflowRunChannel = "workflow:run";
 export const workflowCancelChannel = "workflow:cancel";
 export const workflowResumeChannel = "workflow:resume";
@@ -158,3 +186,5 @@ export type WorkflowRunResult = z.infer<typeof workflowRunResultSchema>;
 export type RunRecordStatus = z.infer<typeof runRecordStatusSchema>;
 export type RunHistoryEntry = z.infer<typeof runHistoryEntrySchema>;
 export type RunHistoryDetail = z.infer<typeof runHistoryDetailSchema>;
+export type RunCheckpoint = z.infer<typeof runCheckpointSchema>;
+export type RunForkResult = z.infer<typeof runForkResultSchema>;

@@ -3,8 +3,10 @@ import type {
   ApprovalDecision,
   PendingApproval,
   RunDone,
+  RunForkResult,
   RunHistoryDetail,
   RunHistoryEntry,
+  RunCheckpoint,
   RunStart,
   RunUpdate,
   SteerDelivery,
@@ -43,6 +45,8 @@ export interface SwarmyApi {
     history(workflowId: string): Promise<RunHistoryEntry[]>;
     openHistory(threadId: string): Promise<RunHistoryDetail>;
     refreshHistory(threadId: string): Promise<RunHistoryDetail>;
+    checkpoints(workflow: Workflow, threadId: string): Promise<RunCheckpoint[]>;
+    fork(workflow: Workflow, threadId: string, checkpointId: string): Promise<RunForkResult>;
     onUpdate(listener: (update: RunUpdate) => void): () => void;
   };
 }

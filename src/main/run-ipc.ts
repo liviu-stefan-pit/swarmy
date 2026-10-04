@@ -8,6 +8,12 @@ import {
   pendingApprovalSchema,
   runCancelChannel,
   runCancelPayloadSchema,
+  runCheckpointSchema,
+  runCheckpointsChannel,
+  runCheckpointsPayloadSchema,
+  runForkChannel,
+  runForkPayloadSchema,
+  runForkResultSchema,
   runHistoryChannel,
   runHistoryDetailSchema,
   runHistoryEntrySchema,
@@ -138,6 +144,39 @@ export function registerRunIpc(engine: EngineHost): void {
     } catch (error) {
       throw new Error(scrub(errorText(error), apiKey), { cause: error });
     }
+  });
+
+  ipcMain.handle(runCheckpointsChannel, async (_event, payload: unknown) => {
+    const parsed = runCheckpointsPayloadSchema.parse(payload);
+    const result = await engine.request({
+      type: "run.checkpoints",
+      id: randomUUID(),
+      workflow: parsed.workflow,
+      threadId: parsed.threadId,
+    });
+    if (result.type !== "run.checkpointsResult") {
+      throw new Error("Unexpected engine response");
+    }
+    return runCheckpointSchema.array().parse(result.checkpoints);
+  });
+
+  ipcMain.handle(runForkChannel, async (_event, payload: unknown) => {
+    const parsed = runForkPayloadSchema.parse(payload);
+    const result = await engine.request({
+      type: "run.fork",
+      id: randomUUID(),
+      workflow: parsed.workflow,
+      threadId: parsed.threadId,
+      checkpointId: parsed.checkpointId,
+    });
+    if (result.type !== "run.forkResult") {
+      throw new Error("Unexpected engine response");
+    }
+    return runForkResultSchema.parse({
+      threadId: result.threadId,
+      nextNodeId: result.nextNodeId,
+      statuses: result.statuses,
+    });
   });
 
   ipcMain.handle(runCancelChannel, async (_event, payload: unknown) => {

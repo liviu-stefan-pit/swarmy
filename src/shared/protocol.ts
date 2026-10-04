@@ -3,6 +3,8 @@ import {
   approvalDecisionSchema,
   nodeRunStatusSchema,
   pendingApprovalSchema,
+  runCheckpointSchema,
+  runForkResultSchema,
   runHistoryDetailSchema,
   runHistoryEntrySchema,
   runRecordStatusSchema,
@@ -239,6 +241,32 @@ export const runHistoryRefreshResultMessageSchema = runHistoryDetailResultSchema
   type: z.literal("run.historyRefreshResult"),
 });
 
+export const runCheckpointsMessageSchema = z.object({
+  type: z.literal("run.checkpoints"),
+  id: z.string().min(1),
+  workflow: workflowSchema,
+  threadId: z.string().min(1),
+});
+
+export const runCheckpointsResultMessageSchema = z.object({
+  type: z.literal("run.checkpointsResult"),
+  id: z.string().min(1),
+  checkpoints: z.array(runCheckpointSchema),
+});
+
+export const runForkMessageSchema = z.object({
+  type: z.literal("run.fork"),
+  id: z.string().min(1),
+  workflow: workflowSchema,
+  threadId: z.string().min(1),
+  checkpointId: z.string().min(1),
+});
+
+export const runForkResultMessageSchema = runForkResultSchema.extend({
+  type: z.literal("run.forkResult"),
+  id: z.string().min(1),
+});
+
 export const workflowCancelMessageSchema = z.object({
   type: z.literal("workflow.cancel"),
   id: z.string().min(1),
@@ -330,6 +358,10 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   runHistoryOpenResultMessageSchema,
   runHistoryRefreshMessageSchema,
   runHistoryRefreshResultMessageSchema,
+  runCheckpointsMessageSchema,
+  runCheckpointsResultMessageSchema,
+  runForkMessageSchema,
+  runForkResultMessageSchema,
   workflowCancelMessageSchema,
   workflowCancelResultMessageSchema,
   runUnfinishedMessageSchema,
