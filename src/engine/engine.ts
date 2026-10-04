@@ -231,6 +231,10 @@ async function answerRun(
         ...(message.systemPrompt !== undefined ? { systemPrompt: message.systemPrompt } : {}),
         ...(message.tools !== undefined ? { tools: message.tools } : {}),
         ...(message.disallowedTools !== undefined ? { disallowedTools: message.disallowedTools } : {}),
+        ...(message.guardrails !== undefined ? { guardrails: message.guardrails } : {}),
+        ...(message.writePaths !== undefined ? { writePaths: message.writePaths } : {}),
+        ...(message.sandboxEnabled !== undefined ? { sandboxEnabled: message.sandboxEnabled } : {}),
+        ...(message.autoReview !== undefined ? { autoReview: message.autoReview } : {}),
       },
       onUpdate(update) {
         port.postMessage({

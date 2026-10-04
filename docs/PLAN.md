@@ -33,7 +33,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 11 | Run control, steering, resume | [x] | phase-11 | 2026-10-04 |
 | 12 | Approval gates | [x] | phase-12 | 2026-10-04 |
 | 13 | Diff review | [x] | phase-13 | 2026-10-04 |
-| 14 | Guardrails | [ ] | | |
+| 14 | Guardrails | [x] | phase-14 | 2026-10-04 |
 | 15 | Observability and budgets | [ ] | | |
 | 16 | Time travel | [ ] | | |
 | 17 | Shared task board | [ ] | | |
@@ -1060,8 +1060,20 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Enable the hook on an agent in a scratch repo. Ask it to run `git push --force`. The log shows the command was denied, and no push happened.
-2. Ask it to run `git status`. That command runs.
+This uses a real Cursor agent. The repository is `C:\prod\scratch-repo`. Leave **Sandbox** and **Auto-review** unchecked, and leave **Disallowed tools** on **Default**, so the agent still has a shell. The hook is what blocks the push.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Guardrails` and press Enter. The **Workflows** dropdown should show that name.
+4. From the **Nodes** list, drag **Agent** onto the canvas. The card reads **Agent**.
+5. Click the **Agent** card. In the inspector, set **Workspace mode** to `repo`. A **Repository** field appears. Paste `C:\prod\scratch-repo`.
+6. Check **Guardrails**. A **Write paths** box appears. Leave it empty. Leave **Sandbox** and **Auto-review** unchecked. Leave **Disallowed tools** on **Default**.
+7. Set **Task prompt** to `Run this command and no other commands: git push --force. If it is denied, your reply must include the exact words Denied by Swarmy guardrails. Do not edit any files.`
+8. On the **Agent** card, click **Run**. Do not click **Run** in the toolbar.
+9. The pill reads **running**, then **completed** or **failed**. The **Run log** includes `Guardrails hook installed.` It also includes `Denied by Swarmy guardrails`. It does not show a successful push. In a terminal, `git -C C:\prod\scratch-repo status` does not show a push in progress.
+10. Click **Agent** again. Replace **Task prompt** with `Run this command and no other commands: git status. Your reply must include the first line of that command's output. Do not push. Do not edit any files.`
+11. On the **Agent** card, click **Run** again.
+12. The pill reaches **completed**. The **Run log** includes `Guardrails hook installed.` and the first line of `git status` (a branch name). The command was not denied.
 
 **Prompt.**
 
@@ -1076,7 +1088,14 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- An agent config with `disallowedTools` keeps that array on the options passed to `Agent.create` and again on `Agent.resume`. The same path passes `tools`, `sandboxOptions.enabled`, and `autoReview`.
+- **Guardrails** on the agent writes `.cursor/hooks.json` and `.cursor/hooks/swarmy-guard.ps1` into the workspace before the run. Both `preToolUse` and `beforeShellExecution` call that script with `failClosed: true`. The run sets `settingSources: ["project"]` so the hook loads (risk R3). Resume passes those options again. The log line is `Guardrails hook installed.`
+- The script denies `git push --force`, `git push --force-with-lease`, and `Remove-Item -Recurse` on the workspace root. It allows `git status`. A write outside the write paths is denied; a path inside is allowed. An empty write-path list allows the workspace and still denies paths that leave it. Writes under `.cursor` are denied. Bad or empty input denies and exits non-zero.
+- The agent prompt names the allowed relative paths. The SDK runs hooks only during a real agent turn, so the automated test runs the PowerShell script directly. The live hook path is the manual test above. That run denied `git push --force` (the log included `Denied by Swarmy guardrails` and the command was not executed) and `git status` completed.
+- Hook files are listed in the worktree's `info/exclude`, so they stay out of the diff review.
+- Node docs updated (decision D13): `docs/nodes/agent.md`, the index, and `handles.md`. No new decision. No later phase prompt changed.
+- The manual test above is the step-by-step walkthrough, and it uses `C:\prod\scratch-repo`.
+- `npm run verify` exited 0.
 
 ---
 

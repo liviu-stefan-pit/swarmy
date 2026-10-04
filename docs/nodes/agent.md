@@ -14,7 +14,7 @@ Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**
 
 While the selected agent is `running`, the run log has a steering box. **Steer** sends that text into the live run. The log says `Steering delivered` when the run accepted it, or `Steering sent as a follow-up` when it is sent as a normal message after the current turn finishes.
 
-If you quit while a workflow run is unfinished, reopen the app and press **Resume**. Nodes that already completed stay completed. An agent that had already started is continued with `Agent.resume`, and its system prompt, tools, and MCP servers are passed again. Rewinding to an earlier checkpoint is not here yet.
+If you quit while a workflow run is unfinished, reopen the app and press **Resume**. Nodes that already completed stay completed. An agent that had already started is continued with `Agent.resume`, and its system prompt, tools, disallowed tools, sandbox, auto-review, and MCP servers are passed again. When guardrails are on, the project hooks are passed again too. Rewinding to an earlier checkpoint is not here yet.
 
 Each agent is asked to call `submit_handoff` with `summary`, `files`, and `blockers`. Those three fields are what the next agent sees. If the tool is not called, the final assistant text is the handoff and it is marked unstructured. The run uses the workspace mode on this agent. While it runs, the **Run log** shows the workspace path. After the node finishes, Swarmy deletes a `repo` worktree or a `managed` folder, unless an [Approval](approval.md) follows this agent. That worktree stays so the inbox can diff it and so an approval can commit into it. A `folder` path is left in place.
 
@@ -28,7 +28,11 @@ Select the card. The inspector on the right edits that agent only:
 | Task prompt | The task for this node |
 | Template variables | Every `{{name}}` token in the two prompts. The list is not filled from upstream nodes yet |
 | Tools | **Default** leaves the field off, which means the SDK's default toolset. **Only these** stores an allow list. An empty list means no built-in tools |
-| Disallowed tools | Same two choices for the deny list |
+| Disallowed tools | Same two choices for the deny list. The list is sent to the agent when the run starts and again if the agent is resumed |
+| Guardrails | When checked, Swarmy writes `.cursor/hooks.json` and a PowerShell hook into the workspace and loads project hooks. The hook denies `git push --force`, `git push --force-with-lease`, and `Remove-Item -Recurse` on the workspace root. `git status` is allowed. The run log says `Guardrails hook installed.` |
+| Write paths | Shown when guardrails are on. One relative path per line. The agent is told those paths, and the hook denies writes outside them. Leave it empty and writes inside the workspace are allowed. Writes under `.cursor` are always denied |
+| Sandbox | When checked, the agent runs with Cursor's sandbox enabled |
+| Auto-review | When checked, Cursor auto-reviews this agent's local tool calls |
 | Workspace mode | `repo`, `managed`, or `folder`. Leave it unset and the run uses `managed` |
 | Repository | Shown when the mode is `repo`. The git clone for this workflow. Every repo agent shares it |
 | Folder | Shown when the mode is `folder`. The plain folder this agent writes in. Only one run may use it at a time |
@@ -53,12 +57,6 @@ The `diff` output cannot land on the `file` input. Those types differ, and the c
 
 Several sources may share one input. A Text node and a Planner may both wire into the same Agent `text` handle.
 
-## Later
-
-| Phase | What arrives |
-| --- | --- |
-| 14 | Tool limits and a hook that blocks dangerous shell commands |
-
 ## Schema
 
 ```json
@@ -72,7 +70,11 @@ Several sources may share one input. A Text node and a Planner may both wire int
     "systemPrompt": "You write the change. Use {{goal}}.",
     "taskPrompt": "Implement {{goal}}.",
     "tools": [],
-    "disallowedTools": ["Shell"],
+    "disallowedTools": ["shell"],
+    "guardrails": true,
+    "writePaths": ["src"],
+    "sandboxEnabled": false,
+    "autoReview": false,
     "workspaceMode": "repo"
   }
 }
@@ -80,6 +82,8 @@ Several sources may share one input. A Text node and a Planner may both wire int
 
 `label` is required. The other fields are optional. `folderPath` is the folder used when `workspaceMode` is `folder`. The git clone for `repo` mode is `repositoryPath` on the workflow, not on this node.
 
-`tools: []` means no built-in tools. Leaving `tools` out means the default toolset. Those are not the same, and saving the node does not turn one into the other. `disallowedTools` works the same way.
+`tools: []` means no built-in tools. Leaving `tools` out means the default toolset. Those are not the same, and saving the node does not turn one into the other. `disallowedTools` works the same way. `shell` in that list removes the shell tool. Guardrails are separate: they still block the commands above when the shell tool is allowed.
+
+`guardrails: true` writes the hook into the agent workspace before the run and sets project settings so that hook loads. `writePaths` lists the relative paths the agent may write. Leave `writePaths` out, or save it as `[]`, and writes inside the workspace are allowed. Leave `guardrails`, `sandboxEnabled`, or `autoReview` out and that control stays off.
 
 `{{goal}}` in the prompts shows up in the inspector as a template variable. The name is not stored on its own, and nothing fills it from an upstream node yet.

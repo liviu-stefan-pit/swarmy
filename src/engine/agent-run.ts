@@ -1,3 +1,4 @@
+import { guardrailPromptNote } from "./guardrails";
 import type {
   AgentRuntime,
   CreateAgentRequest,
@@ -113,6 +114,9 @@ export function startAgentRun(input: {
         ? await input.runtime.resume({ ...launch, agentId: input.request.agentId })
         : await input.runtime.create(launch);
       input.onAgent?.(agent.agentId);
+      if (input.request.guardrails) {
+        note("Guardrails hook installed.");
+      }
       if (cancelRequested) {
         settleRun(new Error("Run was cancelled"));
         const outcome: AgentRunOutcome = { status: "cancelled", log, text: "" };
@@ -120,7 +124,7 @@ export function startAgentRun(input: {
         return outcome;
       }
 
-      const prompt = input.request.prompt.trim().length > 0 ? input.request.prompt : "Reply.";
+      const prompt = agentPrompt(input.request);
       run = await agent.send(prompt);
       resolveRun?.(run);
       if (cancelRequested) {
@@ -206,14 +210,29 @@ function createRequest(request: AgentRunRequest): CreateAgentRequest {
     ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
     ...(request.customTools !== undefined ? { customTools: request.customTools } : {}),
     ...(request.mcpServers !== undefined ? { mcpServers: request.mcpServers } : {}),
+    ...(request.guardrails !== undefined ? { guardrails: request.guardrails } : {}),
+    ...(request.writePaths !== undefined ? { writePaths: request.writePaths } : {}),
+    ...(request.sandboxEnabled !== undefined ? { sandboxEnabled: request.sandboxEnabled } : {}),
+    ...(request.autoReview !== undefined ? { autoReview: request.autoReview } : {}),
   };
+}
+
+function agentPrompt(request: AgentRunRequest): string {
+  const task = request.prompt.trim().length > 0 ? request.prompt : "Reply.";
+  if (!request.guardrails) return task;
+  return `${task}\n\n${guardrailPromptNote(request.writePaths ?? [])}`;
 }
 
 function appendEvent(log: string, event: RuntimeEvent): string {
   if (event.type === "assistant") {
     return log + event.text;
   }
-  const line = event.type === "tool" ? `${event.name} (${event.status})` : event.text;
+  const line =
+    event.type === "tool"
+      ? event.detail
+        ? `${event.name} (${event.status}): ${event.detail}`
+        : `${event.name} (${event.status})`
+      : event.text;
   return appendLine(log, line);
 }
 

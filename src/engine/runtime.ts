@@ -21,7 +21,7 @@ export interface HelloResult {
 
 export type RuntimeEvent =
   | { type: "assistant"; text: string }
-  | { type: "tool"; name: string; status: "running" | "completed" | "error" }
+  | { type: "tool"; name: string; status: "running" | "completed" | "error"; detail?: string }
   | { type: "warning"; text: string };
 
 export type RuntimeRunStatus = "finished" | "error" | "cancelled";
@@ -78,6 +78,10 @@ export interface CreateAgentRequest {
   disallowedTools?: string[];
   customTools?: Record<string, RuntimeCustomTool>;
   mcpServers?: Record<string, RuntimeMcpServer>;
+  guardrails?: boolean;
+  writePaths?: string[];
+  sandboxEnabled?: boolean;
+  autoReview?: boolean;
 }
 
 export interface ResumeAgentRequest extends CreateAgentRequest {

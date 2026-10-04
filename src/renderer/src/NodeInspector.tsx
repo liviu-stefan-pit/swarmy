@@ -152,6 +152,48 @@ function AgentFields({
           onChange({ disallowedTools });
         }}
       />
+      <ToggleField
+        label="Guardrails"
+        testId="inspector-guardrails"
+        checked={data.guardrails === true}
+        hint="Block dangerous shell commands and writes outside the write paths."
+        onChange={(guardrails) => {
+          onChange({ guardrails });
+        }}
+      />
+      {data.guardrails === true ? (
+        <label className="block space-y-1 text-xs text-zinc-400">
+          <span>Write paths</span>
+          <textarea
+            data-testid="inspector-write-paths"
+            className={`${fieldClass} min-h-16`}
+            value={(data.writePaths ?? []).join("\n")}
+            placeholder="One relative path per line. Empty allows the workspace."
+            onChange={(event) => {
+              onChange({ writePaths: toolList(event.target.value) });
+            }}
+          />
+          <span className="block text-zinc-500">Relative paths this agent may write. The hook denies the rest.</span>
+        </label>
+      ) : null}
+      <ToggleField
+        label="Sandbox"
+        testId="inspector-sandbox"
+        checked={data.sandboxEnabled === true}
+        hint="Run this agent inside Cursor's sandbox."
+        onChange={(sandboxEnabled) => {
+          onChange({ sandboxEnabled });
+        }}
+      />
+      <ToggleField
+        label="Auto-review"
+        testId="inspector-auto-review"
+        checked={data.autoReview === true}
+        hint="Let Cursor auto-review this agent's local tool calls."
+        onChange={(autoReview) => {
+          onChange({ autoReview });
+        }}
+      />
       <label className="block space-y-1 text-xs text-zinc-400">
         <span>Workspace mode</span>
         <select
@@ -212,6 +254,38 @@ function WorkflowRepositoryField() {
         }}
       />
       <span className="block text-zinc-500">Shared by every repo agent in this workflow.</span>
+    </label>
+  );
+}
+
+function ToggleField({
+  label,
+  testId,
+  checked,
+  hint,
+  onChange,
+}: {
+  label: string;
+  testId: string;
+  checked: boolean;
+  hint: string;
+  onChange: (checked: boolean) => void;
+}) {
+  return (
+    <label className="flex items-start gap-2 text-xs text-zinc-400">
+      <input
+        data-testid={testId}
+        className="mt-0.5"
+        type="checkbox"
+        checked={checked}
+        onChange={(event) => {
+          onChange(event.target.checked);
+        }}
+      />
+      <span>
+        <span className="block text-zinc-300">{label}</span>
+        <span className="block text-zinc-500">{hint}</span>
+      </span>
     </label>
   );
 }

@@ -14,6 +14,8 @@ import {
   type SDKUser,
   type SteerAckOutcome,
 } from "@cursor/sdk";
+import { buildAgentSdkOptions } from "./agent-sdk-options";
+import { installGuardrails } from "./guardrails";
 import { SYSTEM_PROMPT_WARNING, runHello } from "./hello-run";
 import type {
   AgentRuntime,
@@ -176,11 +178,13 @@ class SdkSession implements RuntimeAgent {
   }
 
   async open(systemPrompt: string | undefined): Promise<void> {
+    await installRequestGuardrails(this.request);
     this.current = await createLocalAgent(this.request, this.modelId, systemPrompt);
     this.agentId = this.current.agentId;
   }
 
   async openResume(agentId: string, systemPrompt: string | undefined): Promise<void> {
+    await installRequestGuardrails(this.request);
     this.current = await resumeLocalAgent({ ...this.request, agentId }, this.modelId, systemPrompt);
     this.agentId = this.current.agentId;
   }
@@ -302,23 +306,7 @@ function createLocalAgent(
   modelId: string,
   systemPrompt: string | undefined,
 ): Promise<SDKAgent> {
-  const storeDir = join(request.cwd, "agent-store");
-  mkdirSync(storeDir, { recursive: true });
-  return Agent.create({
-    apiKey: request.apiKey,
-    name: "Swarmy agent",
-    model: { id: modelId },
-    local: {
-      cwd: request.cwd,
-      settingSources: [],
-      store: new JsonlLocalAgentStore(storeDir),
-      ...(request.customTools ? { customTools: toSdkCustomTools(request.customTools) } : {}),
-    },
-    ...(request.tools !== undefined ? { tools: withHandoffTool(request.tools, request.customTools) } : {}),
-    ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
-    ...(systemPrompt ? { systemPrompt } : {}),
-    mcpServers: toSdkMcpServers(request.mcpServers),
-  });
+  return Agent.create(localAgentOptions(request, modelId, systemPrompt, agentStoreDir(request.cwd)));
 }
 
 function resumeLocalAgent(
@@ -326,23 +314,47 @@ function resumeLocalAgent(
   modelId: string,
   systemPrompt: string | undefined,
 ): Promise<SDKAgent> {
-  const storeDir = join(request.cwd, "agent-store");
+  return Agent.resume(request.agentId, localAgentOptions(request, modelId, systemPrompt, agentStoreDir(request.cwd)));
+}
+
+function agentStoreDir(cwd: string): string {
+  const storeDir = join(cwd, "agent-store");
   mkdirSync(storeDir, { recursive: true });
-  return Agent.resume(request.agentId, {
+  return storeDir;
+}
+
+function localAgentOptions(
+  request: CreateAgentRequest,
+  modelId: string,
+  systemPrompt: string | undefined,
+  storeDir: string,
+) {
+  const options = buildAgentSdkOptions({
     apiKey: request.apiKey,
+    cwd: request.cwd,
+    modelId,
+    ...(systemPrompt ? { systemPrompt } : {}),
+    ...(request.tools !== undefined ? { tools: withHandoffTool(request.tools, request.customTools) } : {}),
+    ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
+    ...(request.guardrails !== undefined ? { guardrails: request.guardrails } : {}),
+    ...(request.sandboxEnabled !== undefined ? { sandboxEnabled: request.sandboxEnabled } : {}),
+    ...(request.autoReview !== undefined ? { autoReview: request.autoReview } : {}),
+  });
+  return {
+    ...options,
     name: "Swarmy agent",
-    model: { id: modelId },
     local: {
-      cwd: request.cwd,
-      settingSources: [],
+      ...options.local,
       store: new JsonlLocalAgentStore(storeDir),
       ...(request.customTools ? { customTools: toSdkCustomTools(request.customTools) } : {}),
     },
-    ...(request.tools !== undefined ? { tools: withHandoffTool(request.tools, request.customTools) } : {}),
-    ...(request.disallowedTools !== undefined ? { disallowedTools: request.disallowedTools } : {}),
-    ...(systemPrompt ? { systemPrompt } : {}),
     mcpServers: toSdkMcpServers(request.mcpServers),
-  });
+  };
+}
+
+async function installRequestGuardrails(request: CreateAgentRequest): Promise<void> {
+  if (!request.guardrails) return;
+  await installGuardrails(request.cwd, { writePaths: request.writePaths ?? [] });
 }
 
 async function* mapStream(run: Run): AsyncIterable<RuntimeEvent> {
@@ -365,13 +377,44 @@ function mapSdkMessage(message: SDKMessage): RuntimeEvent | undefined {
       }
       return text.length > 0 ? { type: "assistant", text } : undefined;
     }
-    case "tool_call":
-      return { type: "tool", name: message.name, status: message.status };
+    case "tool_call": {
+      const detail = toolDetail(message.result);
+      return {
+        type: "tool",
+        name: message.name,
+        status: message.status,
+        ...(detail ? { detail } : {}),
+      };
+    }
     case "thinking":
       return message.text.length > 0 ? { type: "assistant", text: message.text } : undefined;
     default:
       return undefined;
   }
+}
+
+function toolDetail(result: unknown): string | undefined {
+  if (typeof result === "string") {
+    return clip(result);
+  }
+  if (!result || typeof result !== "object") {
+    return undefined;
+  }
+  const record = result as Record<string, unknown>;
+  const parts: string[] = [];
+  for (const key of ["stdout", "stderr", "message", "error", "agent_message", "output", "text"]) {
+    const value = record[key];
+    if (typeof value === "string" && value.trim().length > 0) {
+      parts.push(value.trim());
+    }
+  }
+  return parts.length > 0 ? clip(parts.join("\n")) : undefined;
+}
+
+function clip(text: string): string | undefined {
+  const oneLine = text.replace(/\s+/g, " ").trim();
+  if (oneLine.length === 0) return undefined;
+  return oneLine.length > 500 ? `${oneLine.slice(0, 500)}…` : oneLine;
 }
 
 function toRuntimeResult(result: RunResult): RuntimeRunResult {

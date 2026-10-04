@@ -185,6 +185,16 @@ function withNodePatch(node: WorkflowNode, patch: Partial<AgentNodeData>): Workf
     ? patch.disallowedTools
     : node.data.disallowedTools;
   if (disallowedTools !== undefined) next.disallowedTools = disallowedTools;
+  const guardrails = Object.hasOwn(patch, "guardrails") ? patch.guardrails : node.data.guardrails;
+  if (guardrails !== undefined) next.guardrails = guardrails;
+  const writePaths = Object.hasOwn(patch, "writePaths") ? patch.writePaths : node.data.writePaths;
+  if (writePaths !== undefined) next.writePaths = writePaths;
+  const sandboxEnabled = Object.hasOwn(patch, "sandboxEnabled")
+    ? patch.sandboxEnabled
+    : node.data.sandboxEnabled;
+  if (sandboxEnabled !== undefined) next.sandboxEnabled = sandboxEnabled;
+  const autoReview = Object.hasOwn(patch, "autoReview") ? patch.autoReview : node.data.autoReview;
+  if (autoReview !== undefined) next.autoReview = autoReview;
   const workspaceMode = Object.hasOwn(patch, "workspaceMode")
     ? patch.workspaceMode
     : node.data.workspaceMode;

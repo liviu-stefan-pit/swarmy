@@ -50,6 +50,10 @@ export const agentNodeDataSchema = z.strictObject({
   disallowedTools: z.array(z.string()).optional(),
   workspaceMode: workspaceModeSchema.optional(),
   folderPath: z.string().min(1).optional(),
+  guardrails: z.boolean().optional(),
+  writePaths: z.array(z.string().min(1)).optional(),
+  sandboxEnabled: z.boolean().optional(),
+  autoReview: z.boolean().optional(),
 });
 
 function workflowNode<const Type extends string, Data extends z.ZodType>(type: Type, data: Data) {

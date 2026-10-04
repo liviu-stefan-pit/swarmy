@@ -40,6 +40,10 @@ export const runStartPayloadSchema = z.object({
   workspaceMode: workspaceModeSchema.optional(),
   repositoryPath: z.string().min(1).optional(),
   folderPath: z.string().min(1).optional(),
+  guardrails: z.boolean().optional(),
+  writePaths: z.array(z.string().min(1)).optional(),
+  sandboxEnabled: z.boolean().optional(),
+  autoReview: z.boolean().optional(),
 });
 
 export const runCancelPayloadSchema = z.object({

@@ -560,6 +560,10 @@ async function executeAgent(
         ...(node.data.systemPrompt !== undefined ? { systemPrompt: node.data.systemPrompt } : {}),
         ...(node.data.tools !== undefined ? { tools: node.data.tools } : {}),
         ...(node.data.disallowedTools !== undefined ? { disallowedTools: node.data.disallowedTools } : {}),
+        ...(node.data.guardrails !== undefined ? { guardrails: node.data.guardrails } : {}),
+        ...(node.data.writePaths !== undefined ? { writePaths: node.data.writePaths } : {}),
+        ...(node.data.sandboxEnabled !== undefined ? { sandboxEnabled: node.data.sandboxEnabled } : {}),
+        ...(node.data.autoReview !== undefined ? { autoReview: node.data.autoReview } : {}),
         ...(savedAgentId ? { agentId: savedAgentId } : {}),
       },
       onAgent(agentId) {
