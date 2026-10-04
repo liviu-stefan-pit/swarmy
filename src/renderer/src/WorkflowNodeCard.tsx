@@ -51,11 +51,13 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
   const outputs = definition?.outputs ?? [];
   const status = data.status ?? "idle";
   const deleteLocked = status === "running" || data.workflowRunning === true;
+  const workers = useRunStore((state) => state.plannerWorkers);
+  const rows = type === "planner" ? workers.filter((worker) => worker.plannerId === id) : [];
 
   return (
     <article
       data-testid="canvas-node"
-      className={`min-w-44 rounded-md border bg-zinc-900 px-3 py-2 text-zinc-50 shadow ${
+      className={`${type === "planner" ? "w-56" : "min-w-44"} rounded-md border bg-zinc-900 px-3 py-2 text-zinc-50 shadow ${
         selected ? "border-sky-400" : "border-zinc-600"
       }`}
     >
@@ -67,7 +69,7 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
       <header className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{data.label}</h3>
         <div className="flex items-center gap-2">
-          {type === "agent" || type === "approval" ? (
+          {type === "agent" || type === "approval" || type === "planner" ? (
             <span data-testid="node-status" className={`rounded-full px-2 py-0.5 text-xs ${statusClass[status]}`}>
               {status}
             </span>
@@ -125,6 +127,21 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
             </div>
           ))}
         </div>
+      ) : null}
+      {rows.length > 0 ? (
+        <ul data-testid="planner-workers" className="nodrag nopan mt-2 space-y-1 border-t border-zinc-700 pt-2">
+          {rows.map((worker) => (
+            <li
+              key={worker.taskId}
+              data-testid="planner-worker"
+              className="text-xs text-zinc-200"
+              {...(worker.workspacePath ? { title: worker.workspacePath } : {})}
+            >
+              <span className="block truncate">{worker.title}</span>
+              <span className="block text-zinc-400">{worker.status}</span>
+            </li>
+          ))}
+        </ul>
       ) : null}
       {type === "agent" ? (
         <div className="nodrag nopan mt-2 flex gap-2">

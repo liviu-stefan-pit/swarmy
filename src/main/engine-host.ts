@@ -15,7 +15,14 @@ import {
   type EngineMessage,
   type EngineStatus,
 } from "@shared/protocol";
-import { boardTaskSchema, boardUpdateChannel, runUpdateChannel, runUpdateSchema } from "@shared/runs";
+import {
+  boardTaskSchema,
+  boardUpdateChannel,
+  plannerUpdateChannel,
+  plannerWorkerSchema,
+  runUpdateChannel,
+  runUpdateSchema,
+} from "@shared/runs";
 import { ReconnectCounter } from "./reconnect-counter";
 
 const RESTART_DELAY_MS = 1000;
@@ -118,6 +125,10 @@ export function startEngineHost(): EngineHost {
         }
         if (parsed.type === "board.update") {
           broadcastBoardUpdate(parsed);
+          return;
+        }
+        if (parsed.type === "planner.update") {
+          broadcastPlannerUpdate(parsed);
           return;
         }
         if (isEngineReply(parsed)) {
@@ -286,6 +297,15 @@ function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessag
     case "workflow.load":
     case "workflow.save":
       return { timeoutMs: WORKFLOW_TIMEOUT_MS, timeoutMessage: "Workflow request timed out" };
+  }
+}
+
+function broadcastPlannerUpdate(message: Extract<EngineMessage, { type: "planner.update" }>): void {
+  const workers = plannerWorkerSchema.array().parse(message.workers);
+  for (const window of BrowserWindow.getAllWindows()) {
+    if (!window.isDestroyed()) {
+      window.webContents.send(plannerUpdateChannel, workers);
+    }
   }
 }
 

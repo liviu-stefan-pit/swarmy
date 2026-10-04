@@ -177,7 +177,18 @@ export const runCancelChannel = "run:cancel";
 export const runSteerChannel = "run:steer";
 export const runUnfinishedChannel = "run:unfinished";
 export const runUpdateChannel = "run:update";
+export const plannerWorkerSchema = z.object({
+  plannerId: z.string().min(1),
+  taskId: z.string().min(1),
+  title: z.string().min(1),
+  status: nodeRunStatusSchema,
+  workspacePath: z.string().min(1).optional(),
+});
+
+export type PlannerWorker = z.infer<typeof plannerWorkerSchema>;
+
 export const boardUpdateChannel = "board:update";
+export const plannerUpdateChannel = "planner:update";
 export const runHistoryChannel = "run:history";
 export const runHistoryOpenChannel = "run:historyOpen";
 export const runHistoryRefreshChannel = "run:historyRefresh";

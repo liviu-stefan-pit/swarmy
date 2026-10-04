@@ -95,7 +95,7 @@ export const nodeTypes: readonly NodeTypeDefinition[] = [
   defineNode({
     type: "planner",
     label: "Planner",
-    description: "Turns a brief into a plan other nodes can read.",
+    description: "Splits a goal into at most 8 tasks and runs one worker for each.",
     inputs: [{ id: "text", type: "text", label: "Text" }],
     outputs: [{ id: "text", type: "text", label: "Text" }],
   }),

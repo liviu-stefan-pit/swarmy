@@ -7,6 +7,8 @@ import {
   approvalListPayloadSchema,
   boardTaskSchema,
   boardUpdateChannel,
+  plannerUpdateChannel,
+  plannerWorkerSchema,
   pendingApprovalSchema,
   runCancelChannel,
   runCancelPayloadSchema,
@@ -38,6 +40,7 @@ import {
   workflowRunChannel,
   workflowRunResultSchema,
   type BoardTask,
+  type PlannerWorker,
   type RunUpdate,
 } from "@shared/runs";
 import {
@@ -65,6 +68,7 @@ import { z } from "zod";
 const listeners = new Set<(status: EngineStatus) => void>();
 const runListeners = new Set<(update: RunUpdate) => void>();
 const boardListeners = new Set<(tasks: BoardTask[]) => void>();
+const plannerListeners = new Set<(workers: PlannerWorker[]) => void>();
 let latest: EngineStatus = "reconnecting";
 
 function publish(status: EngineStatus): void {
@@ -88,6 +92,16 @@ ipcRenderer.on(runUpdateChannel, (_event: IpcRendererEvent, payload: unknown) =>
     return;
   }
   for (const listener of runListeners) {
+    listener(parsed.data);
+  }
+});
+
+ipcRenderer.on(plannerUpdateChannel, (_event: IpcRendererEvent, payload: unknown) => {
+  const parsed = plannerWorkerSchema.array().safeParse(payload);
+  if (!parsed.success) {
+    return;
+  }
+  for (const listener of plannerListeners) {
     listener(parsed.data);
   }
 });
@@ -222,6 +236,12 @@ const swarmy: SwarmyApi = {
       boardListeners.add(listener);
       return () => {
         boardListeners.delete(listener);
+      };
+    },
+    onPlanner(listener) {
+      plannerListeners.add(listener);
+      return () => {
+        plannerListeners.delete(listener);
       };
     },
   },

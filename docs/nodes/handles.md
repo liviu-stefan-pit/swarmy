@@ -10,6 +10,8 @@ Phase 16 does not change this table. Forking a run does not add or remove a hand
 
 Phase 17 does not change this table. The shared task board is not a handle. Agents reach it through `update_task` and `inspect_board`.
 
+Phase 18 does not change this table. A planner still takes and produces `text`. The workers it spawns are rows under that card for the run. They are not nodes, and they are not handles.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |

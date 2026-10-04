@@ -3,9 +3,11 @@ import { getNodeType } from "@shared/node-registry";
 import { connectError, type WorkflowConnection } from "@shared/validate-workflow";
 import {
   agentNodeDataSchema,
+  plannerNodeDataSchema,
   workflowNodeSchema,
   workflowSchema,
   type AgentNodeData,
+  type PlannerNodeData,
   type Position,
   type Viewport,
   type Workflow,
@@ -198,6 +200,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
 }));
 
 function withNodePatch(node: WorkflowNode, patch: Partial<AgentNodeData>): WorkflowNode {
+  if (node.type === "planner") {
+    const next: PlannerNodeData = { label: patch.label ?? node.data.label };
+    const modelId = Object.hasOwn(patch, "modelId") ? patch.modelId : node.data.modelId;
+    if (modelId !== undefined) next.modelId = modelId;
+    const systemPrompt = Object.hasOwn(patch, "systemPrompt") ? patch.systemPrompt : node.data.systemPrompt;
+    if (systemPrompt !== undefined) next.systemPrompt = systemPrompt;
+    const taskPrompt = Object.hasOwn(patch, "taskPrompt") ? patch.taskPrompt : node.data.taskPrompt;
+    if (taskPrompt !== undefined) next.taskPrompt = taskPrompt;
+    const workspaceMode = Object.hasOwn(patch, "workspaceMode") ? patch.workspaceMode : node.data.workspaceMode;
+    if (workspaceMode !== undefined) next.workspaceMode = workspaceMode;
+    const folderPath = Object.hasOwn(patch, "folderPath") ? patch.folderPath : node.data.folderPath;
+    if (folderPath) next.folderPath = folderPath;
+    return { ...node, data: plannerNodeDataSchema.parse(next) };
+  }
+
   if (node.type !== "agent") {
     return { ...node, data: { label: patch.label ?? node.data.label } };
   }

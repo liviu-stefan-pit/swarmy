@@ -23,6 +23,9 @@ export interface FakePromptScript {
   error?: string;
   hold?: boolean;
   handoff?: Record<string, unknown>;
+  /** One `submit_plan` payload. `plans` calls the tool once per entry. */
+  plan?: unknown;
+  plans?: readonly unknown[];
   task?: BoardTask;
   steer?: SteerAck;
   usage?: {
@@ -51,6 +54,8 @@ export class FakeRuntime implements AgentRuntime {
   readonly sentPrompts: string[] = [];
   readonly finishedPrompts: string[] = [];
   readonly resumes: ResumeAgentRequest[] = [];
+  readonly planReplies: string[] = [];
+  readonly created: CreateAgentRequest[] = [];
   private nextRunId = 0;
   private readonly heldRuns: FakeRun[] = [];
 
@@ -90,6 +95,7 @@ export class FakeRuntime implements AgentRuntime {
   }
 
   create(request: CreateAgentRequest): Promise<RuntimeAgent> {
+    this.created.push(request);
     return Promise.resolve(new FakeAgent(this, request.customTools));
   }
 
@@ -230,6 +236,19 @@ export class FakeRun implements RuntimeRun {
       };
       await taskTool.execute(args);
       yield { type: "tool", name: "update_task", status: "completed" };
+    }
+    const planTool = this.customTools?.submit_plan;
+    const payloads = this.script.plans ?? (this.script.plan !== undefined ? [this.script.plan] : []);
+    if (planTool) {
+      for (const payload of payloads) {
+        const args =
+          payload !== null && typeof payload === "object" && !Array.isArray(payload)
+            ? (payload as Record<string, unknown>)
+            : { value: payload };
+        const reply = await planTool.execute(args);
+        this.runtime.planReplies.push(typeof reply === "string" ? reply : JSON.stringify(reply));
+        yield { type: "tool", name: "submit_plan", status: "completed" };
+      }
     }
     const tool = this.customTools?.submit_handoff;
     if (this.script.handoff && tool) {

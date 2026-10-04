@@ -138,6 +138,9 @@ const swarmy: SwarmyApi = {
     onBoard() {
       return () => undefined;
     },
+    onPlanner() {
+      return () => undefined;
+    },
   },
 };
 

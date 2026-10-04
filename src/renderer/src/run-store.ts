@@ -1,5 +1,14 @@
 import { create } from "zustand";
-import { budgetExceededMessage, type ApprovalDecision, type BoardTask, type NodeRunStatus, type PendingApproval, type RunUpdate, type WorkflowRunResult } from "@shared/runs";
+import {
+  budgetExceededMessage,
+  type ApprovalDecision,
+  type BoardTask,
+  type NodeRunStatus,
+  type PendingApproval,
+  type PlannerWorker,
+  type RunUpdate,
+  type WorkflowRunResult,
+} from "@shared/runs";
 import { useWorkflowStore } from "./workflow-store";
 
 type RunState = {
@@ -12,6 +21,7 @@ type RunState = {
   unfinishedThreadId: string | null;
   approvals: PendingApproval[];
   tasks: BoardTask[];
+  plannerWorkers: PlannerWorker[];
   budgetMessage: string;
   historyRevision: number;
   start: (nodeId: string) => Promise<void>;
@@ -35,6 +45,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   unfinishedThreadId: null,
   approvals: [],
   tasks: [],
+  plannerWorkers: [],
   budgetMessage: "",
   historyRevision: 0,
   async start(nodeId) {
@@ -104,12 +115,16 @@ export const useRunStore = create<RunState>((set, get) => ({
       logsByNode: {},
       approvals: [],
       tasks: [],
+      plannerWorkers: [],
       budgetMessage: "",
       statusByNode: Object.fromEntries(workflow.nodes.map((node) => [node.id, "queued" as const])),
     });
 
     const stop = window.swarmy.runs.onUpdate((update) => {
       applyUpdate(set, get, update);
+    });
+    const stopPlanner = window.swarmy.runs.onPlanner((plannerWorkers) => {
+      set({ plannerWorkers });
     });
 
     try {
@@ -126,6 +141,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       set({ log: errorText(error) });
     } finally {
       stop();
+      stopPlanner();
       set({ workflowRunning: false, historyRevision: get().historyRevision + 1 });
       await get().refreshUnfinished(useWorkflowStore.getState().workflow.id);
     }
@@ -145,6 +161,9 @@ export const useRunStore = create<RunState>((set, get) => ({
     const stop = window.swarmy.runs.onUpdate((update) => {
       applyUpdate(set, get, update);
     });
+    const stopPlanner = window.swarmy.runs.onPlanner((plannerWorkers) => {
+      set({ plannerWorkers });
+    });
     try {
       const result = await window.swarmy.runs.resume(workflow, threadId);
       const statusByNode = { ...get().statusByNode };
@@ -159,6 +178,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       set({ log: errorText(error) });
     } finally {
       stop();
+      stopPlanner();
       set({ workflowRunning: false, historyRevision: get().historyRevision + 1 });
       await get().refreshUnfinished(workflow.id);
     }
@@ -244,6 +264,9 @@ export const useRunStore = create<RunState>((set, get) => ({
     const stop = window.swarmy.runs.onUpdate((update) => {
       applyUpdate(set, get, update);
     });
+    const stopPlanner = window.swarmy.runs.onPlanner((plannerWorkers) => {
+      set({ plannerWorkers });
+    });
     try {
       const result = await window.swarmy.runs.resume(workflow, threadId, payload);
       const statusByNode = { ...get().statusByNode };
@@ -259,6 +282,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       set({ log: errorText(error) });
     } finally {
       stop();
+      stopPlanner();
       set({ workflowRunning: false, historyRevision: get().historyRevision + 1 });
       await get().refreshUnfinished(workflow.id);
     }

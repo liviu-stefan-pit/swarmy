@@ -352,6 +352,9 @@ async function answerWorkflowRun(
       onBoard(tasks) {
         port.postMessage({ type: "board.update", tasks });
       },
+      onPlanner(workers) {
+        port.postMessage({ type: "planner.update", workers });
+      },
       ...(message.type === "workflow.resume"
         ? {
             resume: true,

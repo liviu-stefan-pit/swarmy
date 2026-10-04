@@ -40,7 +40,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 16 | Time travel | [x] | phase-16 | 2026-10-04 |
 | 17 | Shared task board | [x] | phase-17 | 2026-10-04 |
 | 17.5 | Token use | [x] | phase-17.5 | 2026-10-04 |
-| 18 | Planner node | [ ] | | |
+| 18 | Planner node | [x] | phase-18 | 2026-10-04 |
 | 19 | Merge node | [ ] | | |
 | 20 | Inputs and MCP | [ ] | | |
 | 21 | Templates and export | [ ] | | |
@@ -1563,8 +1563,17 @@ Do not renumber Phase 18.
 
 **Manual test.**
 
-1. Add a planner with the goal "List two independent one-line text files to create". Run it against the real SDK.
-2. Two worker rows appear and each produces its file in its own workspace.
+This uses one real Cursor planner and the workers it spawns. Leave **Workspace mode** on **Not set** so each worker gets its own managed folder. Leave **Token budget** empty. This test does not need `C:\prod\scratch-repo`.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Planner` and press Tab. The **Workflows** dropdown should show that name. Leave **Token budget** empty.
+4. From the **Nodes** list, drag **Planner** onto the canvas once. The card reads **Planner**. It has a blue **text** input and a blue **text** output. There is no **Run** button on the card.
+5. Click **Planner**. In the inspector, **Workspace mode** stays **Not set**. Click in **Goal** and paste `List two independent one-line text files to create`.
+6. In the toolbar, click **Run**.
+7. The pill on **Planner** moves to **running**. Two rows appear under the card without a refresh. Each row has a title and a status. They are not new cards on the canvas, and there is still only one node in the workflow.
+8. Wait until the pill reads **completed** and both rows read **completed**. Each row shows the task title and the status. The card stays the same width it had before the rows appeared. The **Run log** lists each worker's folder under that worker's line. Open both folders. Each folder contains its own one-line text file. The **Run log** should not say the run was cancelled.
+9. The canvas still shows one **Planner** card. The two worker rows are only under that card. They are not saved as nodes.
 
 **Prompt.**
 
@@ -1579,7 +1588,10 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A planner stores a goal, an optional model, an optional system prompt, and a workspace mode. It runs with read-only tools (`read`, `grep`, `glob`, `ls`) plus `mcp` so it can call `submit_plan`. It does not get write tools. `submit_plan` accepts `{ tasks: [{ id, title, prompt }] }` with at most 8 tasks. Nine tasks returns `A plan can have at most 8 tasks.` A later invalid call returns `The plan was already rejected.` and still starts no workers. If `submit_plan` is never called, the planner fails with `The planner did not call submit_plan.`
+- LangGraph `Send` starts one worker per accepted task. Workers use the planner's workspace mode, or `managed` when it is not set. Each worker prompt is the task prompt plus the plan summary. The canvas lists those workers as rows under the planner for that run. They are not nodes in the saved workflow. A row shows the title and the status. The card stays a fixed width. The worker folder is on the row tooltip and in the run log.
+- Node docs updated (decision D13): the index, `handles.md` (handles did not change), and `docs/nodes/planner.md`. No new decision. Phase 19 is unchanged.
+- `npm run verify` exited 0.
 
 ---
 

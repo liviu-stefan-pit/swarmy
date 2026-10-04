@@ -65,6 +65,15 @@ function workflowNode<const Type extends string, Data extends z.ZodType>(type: T
   });
 }
 
+export const plannerNodeDataSchema = z.strictObject({
+  label: z.string().min(1),
+  modelId: z.string().optional(),
+  systemPrompt: z.string().optional(),
+  taskPrompt: z.string().optional(),
+  workspaceMode: workspaceModeSchema.optional(),
+  folderPath: z.string().min(1).optional(),
+});
+
 export const workflowNodeSchema = z.discriminatedUnion("type", [
   workflowNode("agent", agentNodeDataSchema),
   workflowNode("approval", labelDataSchema),
@@ -73,7 +82,7 @@ export const workflowNodeSchema = z.discriminatedUnion("type", [
   workflowNode("textInput", labelDataSchema),
   workflowNode("mcp", labelDataSchema),
   workflowNode("merge", labelDataSchema),
-  workflowNode("planner", labelDataSchema),
+  workflowNode("planner", plannerNodeDataSchema),
 ]);
 
 export const workflowEdgeSchema = z.strictObject({
@@ -112,6 +121,7 @@ export type NodeTypeId = z.infer<typeof nodeTypeIdSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;
 export type LabelNodeData = z.infer<typeof labelDataSchema>;
 export type AgentNodeData = z.infer<typeof agentNodeDataSchema>;
+export type PlannerNodeData = z.infer<typeof plannerNodeDataSchema>;
 export type WorkflowNode = z.infer<typeof workflowNodeSchema>;
 export type WorkflowEdge = z.infer<typeof workflowEdgeSchema>;
 export type Workflow = z.infer<typeof workflowSchema>;

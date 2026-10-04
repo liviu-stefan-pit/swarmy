@@ -7,6 +7,7 @@ import {
   interrupt,
   isGraphInterrupt,
   MemorySaver,
+  Send,
   START,
   StateGraph,
 } from "@langchain/langgraph";
@@ -19,6 +20,7 @@ import {
   type BoardTask,
   type NodeRunStatus,
   type PendingApproval,
+  type PlannerWorker,
 } from "@shared/runs";
 import type { Workflow, WorkflowNode } from "@shared/workflow";
 import { validateWorkflow } from "@shared/validate-workflow";
@@ -45,6 +47,50 @@ const resumeDecisionSchema = z.union([
 ]);
 
 const maxRejectCycles = 3;
+const maxPlanTasks = 8;
+const planTooLongMessage = "A plan can have at most 8 tasks.";
+const planAlreadyRejectedMessage = "The plan was already rejected.";
+const planMissingMessage = "The planner did not call submit_plan.";
+const plannerReadOnlyTools = ["read", "grep", "glob", "ls", "mcp"];
+const plannerSystemPrompt =
+  "You are a planner. Call submit_plan and do not create, edit, or delete files.";
+
+const planTaskSchema = z.object({
+  id: z.string().min(1),
+  title: z.string().min(1),
+  prompt: z.string().min(1),
+});
+
+const planPayloadSchema = z.object({
+  tasks: z.array(planTaskSchema),
+});
+
+interface PlanTask {
+  id: string;
+  title: string;
+  prompt: string;
+}
+
+interface StoredPlan {
+  summary: string;
+  tasks: PlanTask[];
+}
+
+interface WorkerTaskInput {
+  plannerId: string;
+  task: PlanTask;
+  planSummary: string;
+}
+
+interface WorkerResult {
+  plannerId: string;
+  taskId: string;
+  title: string;
+  status: "completed" | "failed" | "cancelled";
+  summary: string;
+  files: string[];
+  workspacePath?: string;
+}
 
 export interface Handoff {
   kind: "structured" | "unstructured";
@@ -80,6 +126,18 @@ const GraphState = Annotation.Root({
     default: () => ({}),
   }),
   routes: Annotation<Record<string, ApprovalRoute>>({
+    reducer: (left, right) => ({ ...left, ...right }),
+    default: () => ({}),
+  }),
+  plans: Annotation<Record<string, StoredPlan>>({
+    reducer: (left, right) => ({ ...left, ...right }),
+    default: () => ({}),
+  }),
+  workerTask: Annotation<WorkerTaskInput | null>({
+    reducer: (_left, right) => right,
+    default: () => null,
+  }),
+  workerResults: Annotation<Record<string, WorkerResult>>({
     reducer: (left, right) => ({ ...left, ...right }),
     default: () => ({}),
   }),
@@ -123,6 +181,7 @@ export interface WorkflowRunInput {
   onUpdate?: (update: WorkflowRunUpdate) => void;
   taskBoard?: TaskBoard;
   onBoard?: (tasks: BoardTask[]) => void;
+  onPlanner?: (workers: PlannerWorker[]) => void;
 }
 
 export interface WorkflowRunHandle {
@@ -141,6 +200,9 @@ const emptyState = {
   rejectCounts: {},
   feedback: {},
   routes: {},
+  plans: {},
+  workerTask: null,
+  workerResults: {},
 } satisfies GraphValues;
 
 export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
@@ -148,6 +210,7 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
   const sessions = new Map<string, AgentRunSession>();
   const retained = new Map<string, AgentWorkspace>();
   const cancelledNodes = new Set<string>();
+  const plannerWorkers: PlannerWorker[] = [];
   const waiting: PendingApproval[] = [];
   let runCancelled = false;
   let budgetExceeded = false;
@@ -230,6 +293,17 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
       ...(input.onUpdate ? { onUpdate: input.onUpdate } : {}),
       ...(input.taskBoard ? { taskBoard: input.taskBoard } : {}),
       ...(input.onBoard ? { onBoard: input.onBoard } : {}),
+      noteWorker(worker) {
+        const index = plannerWorkers.findIndex(
+          (item) => item.plannerId === worker.plannerId && item.taskId === worker.taskId,
+        );
+        if (index >= 0) {
+          plannerWorkers[index] = worker;
+        } else {
+          plannerWorkers.push(worker);
+        }
+        input.onPlanner?.(plannerWorkers.map((item) => ({ ...item })));
+      },
       sessions,
       retained,
       isCancelled: () => runCancelled,
@@ -595,6 +669,7 @@ interface RunContext {
   onUpdate?: (update: WorkflowRunUpdate) => void;
   taskBoard?: TaskBoard;
   onBoard?: (tasks: BoardTask[]) => void;
+  noteWorker: (worker: PlannerWorker) => void;
   sessions: Map<string, AgentRunSession>;
   retained: Map<string, AgentWorkspace>;
   isCancelled: () => boolean;
@@ -643,6 +718,10 @@ async function executeNode(
 
   if (node.type === "approval") {
     return executeApproval(input, workflow, node, parents, state);
+  }
+
+  if (node.type === "planner") {
+    return executePlanner(input, workflow, node, state);
   }
 
   if (node.type !== "agent") {
@@ -876,11 +955,402 @@ async function executeAgent(
   }
 }
 
+const submitPlanSchema = {
+  type: "object",
+  properties: {
+    tasks: {
+      type: "array",
+      items: {
+        type: "object",
+        properties: {
+          id: { type: "string" },
+          title: { type: "string" },
+          prompt: { type: "string" },
+        },
+        required: ["id", "title", "prompt"],
+      },
+    },
+  },
+  required: ["tasks"],
+};
+
+async function executePlanner(
+  input: RunContext,
+  workflow: Workflow,
+  node: Extract<WorkflowNode, { type: "planner" }>,
+  state: GraphValues,
+): Promise<NodeUpdate> {
+  const parents = predecessors(workflow).get(node.id) ?? [];
+  const upstream = parents
+    .map((id) => state.snapshots?.[id])
+    .filter((snapshot): snapshot is NodeSnapshot => snapshot !== undefined && snapshot.status === "completed");
+  const report = (status: WorkflowRunUpdate["status"], log: string, workspacePath?: string): void => {
+    input.onUpdate?.({
+      nodeId: node.id,
+      status,
+      log,
+      ...(workspacePath ? { workspacePath } : {}),
+    });
+  };
+
+  report("running", "");
+  let workspace: AgentWorkspace | undefined;
+  let told = false;
+  let rejection = "";
+  let accepted: StoredPlan | undefined;
+  const submitPlan: RuntimeCustomTool = {
+    description: "Submit the plan. At most 8 tasks. Each task has id, title, and prompt.",
+    inputSchema: submitPlanSchema,
+    execute(args) {
+      if (accepted) {
+        return "The plan was already accepted.";
+      }
+      const reason = explainPlan(args);
+      if (reason) {
+        if (told) {
+          return planAlreadyRejectedMessage;
+        }
+        told = true;
+        rejection = reason;
+        return reason;
+      }
+      const tasks = planPayloadSchema.parse(args).tasks;
+      accepted = { summary: summarizePlan(tasks), tasks };
+      return "plan recorded";
+    },
+  };
+
+  try {
+    const mode = node.data.workspaceMode ?? "managed";
+    workspace = await input.workspaces.provision({
+      id: workspaceId(input.threadId, node.id),
+      mode,
+      ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
+      ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
+    });
+    const workspacePath = workspace.path;
+    const prompt = plannerUserPrompt(node.data.taskPrompt ?? "", upstream.map((snapshot) => snapshot.handoff));
+    const systemPrompt = [plannerSystemPrompt, node.data.systemPrompt?.trim() ?? ""]
+      .filter((part) => part.length > 0)
+      .join("\n\n");
+    const session = startAgentRun({
+      runtime: input.runtime,
+      request: {
+        apiKey: input.apiKey,
+        cwd: workspacePath,
+        prompt,
+        customTools: { submit_plan: submitPlan },
+        mcpServers: emptyMcpServers,
+        tools: [...plannerReadOnlyTools],
+        systemPrompt,
+        ...(node.data.modelId ? { modelId: node.data.modelId } : {}),
+      },
+      onAgent(agentId) {
+        input.catalog?.rememberAgent(input.threadId, node.id, agentId);
+      },
+      onUpdate(update) {
+        if (update.status === "completed" || update.status === "failed" || update.status === "cancelled") {
+          return;
+        }
+        report("running", update.log, workspacePath);
+      },
+    });
+    input.sessions.set(node.id, session);
+    if (input.isCancelled() || input.isNodeCancelled(node.id)) {
+      await session.cancel();
+    }
+    const outcome = await session.done;
+    rememberNode(input, node.id, outcome.log, outcome);
+    input.noteTokens(outcome.totalTokens);
+    const stop = budgetStopFor(input, outcome.status, outcome.totalTokens);
+    if (stop || input.isCancelled() || outcome.status === "cancelled") {
+      if (stop) {
+        input.noteBudgetStop(stop);
+        await input.markBudgetExceeded();
+      }
+      return cancelledSnapshot(input, node.id);
+    }
+    if (!accepted) {
+      const message = rejection.length > 0 ? rejection : planMissingMessage;
+      const handoff: Handoff = { kind: "unstructured", summary: message, files: [], blockers: [] };
+      report("failed", message, workspacePath);
+      return {
+        snapshots: {
+          [node.id]: { status: "failed", handoff, workspacePath, workspaceId: workspace.id },
+        },
+      };
+    }
+    const plan = accepted;
+    for (const task of plan.tasks) {
+      input.noteWorker({
+        plannerId: node.id,
+        taskId: task.id,
+        title: task.title,
+        status: "queued",
+      });
+    }
+    report("running", plan.summary, workspacePath);
+    return { plans: { [node.id]: plan } };
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : "The planner failed";
+    const handoff: Handoff = { kind: "unstructured", summary: message, files: [], blockers: [] };
+    report("failed", message);
+    return { snapshots: { [node.id]: { status: "failed", handoff } } };
+  } finally {
+    input.sessions.delete(node.id);
+    if (workspace) {
+      input.retained.set(node.id, workspace);
+    }
+  }
+}
+
+async function executePlannerWorker(
+  input: RunContext,
+  workflow: Workflow,
+  state: GraphValues,
+): Promise<NodeUpdate> {
+  const task = state.workerTask;
+  if (!task) {
+    return {};
+  }
+  const planner = workflow.nodes.find((node) => node.id === task.plannerId);
+  if (!planner || planner.type !== "planner") {
+    return {};
+  }
+  const key = `${task.plannerId}\0${task.task.id}`;
+  const sessionKey = `${task.plannerId}:${task.task.id}`;
+  const record = (
+    status: WorkerResult["status"],
+    summary: string,
+    files: string[],
+    workspacePath?: string,
+  ): NodeUpdate => {
+    input.noteWorker({
+      plannerId: task.plannerId,
+      taskId: task.task.id,
+      title: task.task.title,
+      status,
+      ...(workspacePath ? { workspacePath } : {}),
+    });
+    return {
+      workerResults: {
+        [key]: {
+          plannerId: task.plannerId,
+          taskId: task.task.id,
+          title: task.task.title,
+          status,
+          summary,
+          files,
+          ...(workspacePath ? { workspacePath } : {}),
+        },
+      },
+    };
+  };
+
+  if (input.isCancelled() || input.isNodeCancelled(task.plannerId) || input.isBudgetExceeded()) {
+    const summary = input.isBudgetExceeded() ? input.budgetNote() || budgetExceededMessage : "The run was cancelled.";
+    return record("cancelled", summary, []);
+  }
+
+  let workspace: AgentWorkspace | undefined;
+  try {
+    const mode = planner.data.workspaceMode ?? "managed";
+    workspace = await input.workspaces.provision({
+      id: workspaceId(input.threadId, sessionKey),
+      mode,
+      ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
+      ...(planner.data.folderPath ? { folderPath: planner.data.folderPath } : {}),
+    });
+    const workspacePath = workspace.path;
+    input.noteWorker({
+      plannerId: task.plannerId,
+      taskId: task.task.id,
+      title: task.task.title,
+      status: "running",
+      workspacePath,
+    });
+    let captured: Handoff | undefined;
+    const submitHandoff: RuntimeCustomTool = {
+      description: "Record the handoff for downstream nodes.",
+      inputSchema: {
+        type: "object",
+        properties: {
+          summary: { type: "string" },
+          files: { type: "array", items: { type: "string" } },
+          blockers: { type: "array", items: { type: "string" } },
+        },
+        required: ["summary", "files", "blockers"],
+      },
+      execute(args) {
+        const parsed = handoffPayloadSchema.safeParse(args);
+        if (!parsed.success) {
+          return "handoff payload was not accepted";
+        }
+        captured = { kind: "structured", ...parsed.data };
+        return "handoff recorded";
+      },
+    };
+    const boardTools = input.taskBoard?.tools(input.threadId, (tasks) => {
+      input.onBoard?.(tasks);
+    });
+    const session = startAgentRun({
+      runtime: input.runtime,
+      request: {
+        apiKey: input.apiKey,
+        cwd: workspacePath,
+        prompt: workerPrompt(task.task, task.planSummary),
+        customTools: { submit_handoff: submitHandoff, ...boardTools },
+        mcpServers: emptyMcpServers,
+        ...(planner.data.modelId ? { modelId: planner.data.modelId } : {}),
+      },
+      onAgent(agentId) {
+        input.catalog?.rememberAgent(input.threadId, sessionKey, agentId);
+      },
+    });
+    input.sessions.set(sessionKey, session);
+    if (input.isCancelled() || input.isNodeCancelled(task.plannerId)) {
+      await session.cancel();
+    }
+    const outcome = await session.done;
+    rememberNode(input, sessionKey, outcome.log, outcome);
+    input.noteTokens(outcome.totalTokens);
+    const stop = budgetStopFor(input, outcome.status, outcome.totalTokens);
+    if (stop) {
+      input.noteBudgetStop(stop);
+      await input.markBudgetExceeded();
+    }
+    const summary = captured?.summary || outcome.text || outcome.error || task.task.title;
+    if (stop || outcome.status === "cancelled") {
+      return record("cancelled", stop || summary, captured?.files ?? [], workspacePath);
+    }
+    if (outcome.status !== "completed") {
+      return record("failed", summary, captured?.files ?? [], workspacePath);
+    }
+    return record("completed", summary, captured?.files ?? [], workspacePath);
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : "The worker failed";
+    return record("failed", message, [], workspace?.path);
+  } finally {
+    input.sessions.delete(sessionKey);
+    if (workspace) {
+      input.retained.set(sessionKey, workspace);
+    }
+  }
+}
+
+function workerLogLine(result: WorkerResult): string {
+  const text = `${result.title}: ${result.summary}`;
+  return result.workspacePath ? `${text}\n${result.workspacePath}` : text;
+}
+
+function joinPlanner(input: RunContext, plannerId: string, state: GraphValues): NodeUpdate {
+  const plan = state.plans?.[plannerId];
+  const results = Object.values(state.workerResults ?? {}).filter((result) => result.plannerId === plannerId);
+  const expected = plan?.tasks.length ?? 0;
+  const failed = results.length !== expected || results.some((result) => result.status !== "completed");
+  const summary = [plan?.summary ?? "", ...results.map(workerLogLine)]
+    .filter((line) => line.length > 0)
+    .join("\n");
+  const handoff: Handoff = {
+    kind: "structured",
+    summary: summary.length > 0 ? summary : "The planner finished.",
+    files: results.flatMap((result) => result.files),
+    blockers: [],
+  };
+  const status = failed ? "failed" : "completed";
+  input.onUpdate?.({ nodeId: plannerId, status, log: handoff.summary });
+  const kept = input.retained.get(plannerId);
+  return {
+    snapshots: {
+      [plannerId]: {
+        status,
+        handoff,
+        ...(kept
+          ? {
+              workspacePath: kept.path,
+              workspaceId: kept.id,
+              ...(kept.branch ? { branch: kept.branch } : {}),
+              ...(kept.repositoryPath ? { repositoryPath: kept.repositoryPath } : {}),
+            }
+          : {}),
+      },
+    },
+  };
+}
+
+function routePlanner(plannerId: string, state: GraphValues): string | Send[] {
+  const plan = state.plans?.[plannerId];
+  if (!plan || plan.tasks.length === 0) {
+    return END;
+  }
+  return plan.tasks.map(
+    (task) =>
+      new Send(workerNodeName(plannerId), {
+        workerTask: {
+          plannerId,
+          task,
+          planSummary: plan.summary,
+        },
+      }),
+  );
+}
+
+function workerNodeName(plannerId: string): string {
+  return `worker__${plannerId}`;
+}
+
+function joinNodeName(plannerId: string): string {
+  return `join__${plannerId}`;
+}
+
+function explainPlan(args: Record<string, unknown>): string | null {
+  const parsed = planPayloadSchema.safeParse(args);
+  if (!parsed.success) {
+    return "submit_plan needs tasks, and each task needs an id, a title, and a prompt.";
+  }
+  if (parsed.data.tasks.length > maxPlanTasks) {
+    return planTooLongMessage;
+  }
+  if (parsed.data.tasks.length === 0) {
+    return "submit_plan needs at least one task.";
+  }
+  const seen = new Set<string>();
+  for (const task of parsed.data.tasks) {
+    if (seen.has(task.id)) {
+      return "Each task id must be unique.";
+    }
+    seen.add(task.id);
+  }
+  return null;
+}
+
+function summarizePlan(tasks: readonly PlanTask[]): string {
+  return tasks.map((task) => `${task.id}: ${task.title}`).join("\n");
+}
+
+function plannerUserPrompt(goal: string, upstream: readonly Handoff[]): string {
+  const lines = [
+    "Call submit_plan once. The payload is { tasks: [{ id, title, prompt }] } with at most 8 tasks. Each task prompt is the full instruction for one worker. Workers can create files. You cannot. When the goal asks for files, each task prompt must tell that worker to create its own file.",
+    goal.trim().length > 0 ? goal.trim() : "Split the goal into tasks.",
+  ];
+  for (const handoff of upstream) {
+    if (handoff.summary.trim().length > 0) {
+      lines.push(handoff.summary);
+    }
+  }
+  return lines.join("\n\n");
+}
+
+function workerPrompt(task: PlanTask, planSummary: string): string {
+  return [handoffInstruction, boardInstruction(task.title), task.prompt.trim(), `Plan:\n${planSummary}`].join("\n\n");
+}
+
 function compileSwarm(workflow: Workflow, context: RunContext, checkpointer: BaseCheckpointSaver): CompiledSwarm {
   const incoming = predecessors(workflow);
   const outgoing = successors(workflow);
   const nodesById = new Map(workflow.nodes.map((node) => [node.id, node]));
   const approvalIds = new Set(workflow.nodes.filter((node) => node.type === "approval").map((node) => node.id));
+  const plannerIds = new Set(workflow.nodes.filter((node) => node.type === "planner").map((node) => node.id));
   const graph = asSwarmGraph(new StateGraph(GraphState));
 
   for (const node of workflow.nodes) {
@@ -892,9 +1362,14 @@ function compileSwarm(workflow: Workflow, context: RunContext, checkpointer: Bas
     );
   }
 
+  for (const plannerId of plannerIds) {
+    graph.addNode(workerNodeName(plannerId), (state) => executePlannerWorker(context, workflow, state));
+    graph.addNode(joinNodeName(plannerId), (state) => joinPlanner(context, plannerId, state), { defer: true });
+  }
+
   const seen = new Set<string>();
   for (const edge of workflow.edges) {
-    if (approvalIds.has(edge.source)) {
+    if (approvalIds.has(edge.source) || plannerIds.has(edge.source)) {
       continue;
     }
     const key = `${edge.source}\0${edge.target}`;
@@ -911,10 +1386,23 @@ function compileSwarm(workflow: Workflow, context: RunContext, checkpointer: Bas
     }
   }
   for (const node of workflow.nodes) {
-    if (approvalIds.has(node.id) || (outgoing.get(node.id) ?? []).length > 0) {
+    if (approvalIds.has(node.id) || plannerIds.has(node.id) || (outgoing.get(node.id) ?? []).length > 0) {
       continue;
     }
     graph.addEdge(node.id, END);
+  }
+
+  for (const plannerId of plannerIds) {
+    const downstream = outgoing.get(plannerId) ?? [];
+    graph.addConditionalEdges(plannerId, (state) => routePlanner(plannerId, state));
+    graph.addEdge(workerNodeName(plannerId), joinNodeName(plannerId));
+    if (downstream.length === 0) {
+      graph.addEdge(joinNodeName(plannerId), END);
+    } else {
+      for (const target of downstream) {
+        graph.addEdge(joinNodeName(plannerId), target);
+      }
+    }
   }
 
   for (const node of workflow.nodes) {
@@ -945,7 +1433,10 @@ interface SwarmGraph {
     options?: { defer?: boolean },
   ): void;
   addEdge(start: string, end: string): void;
-  addConditionalEdges(source: string, path: (state: GraphValues) => string | string[]): void;
+  addConditionalEdges(
+    source: string,
+    path: (state: GraphValues) => string | string[] | Send | Send[],
+  ): void;
   compile(options: { checkpointer: BaseCheckpointSaver }): CompiledSwarm;
 }
 
@@ -1420,5 +1911,6 @@ function idleContext(threadId: string): RunContext {
     markBudgetExceeded: () => Promise.resolve(),
     noteTokens: () => undefined,
     spentTokens: () => 0,
+    noteWorker: () => undefined,
   };
 }

@@ -3,6 +3,7 @@ import {
   approvalDecisionSchema,
   boardTaskSchema,
   nodeRunStatusSchema,
+  plannerWorkerSchema,
   pendingApprovalSchema,
   runCheckpointSchema,
   runForkResultSchema,
@@ -153,6 +154,11 @@ export const runUpdateMessageSchema = runUpdateSchema.extend({
 export const boardUpdateMessageSchema = z.object({
   type: z.literal("board.update"),
   tasks: z.array(boardTaskSchema),
+});
+
+export const plannerUpdateMessageSchema = z.object({
+  type: z.literal("planner.update"),
+  workers: z.array(plannerWorkerSchema),
 });
 
 export const runDoneMessageSchema = z.object({
@@ -351,6 +357,7 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   runStartMessageSchema,
   runUpdateMessageSchema,
   boardUpdateMessageSchema,
+  plannerUpdateMessageSchema,
   runDoneMessageSchema,
   runCancelMessageSchema,
   runCancelResultMessageSchema,

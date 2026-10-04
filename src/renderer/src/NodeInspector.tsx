@@ -1,5 +1,10 @@
 import { getNodeType } from "@shared/node-registry";
-import { workspaceModeSchema, type AgentNodeData, type WorkflowNode } from "@shared/workflow";
+import {
+  workspaceModeSchema,
+  type AgentNodeData,
+  type PlannerNodeData,
+  type WorkflowNode,
+} from "@shared/workflow";
 import { CollapseControl, IconRail, InspectorIcon, ResizeEdge } from "./PanelChrome";
 import { usePanelLayoutStore } from "./panel-layout-store";
 import { useWorkflowStore } from "./workflow-store";
@@ -110,7 +115,88 @@ function NodeFields({
         />
       </label>
       {node.type === "agent" ? <AgentFields data={node.data} onChange={onChange} /> : null}
+      {node.type === "planner" ? <PlannerFields data={node.data} onChange={onChange} /> : null}
     </div>
+  );
+}
+
+function PlannerFields({
+  data,
+  onChange,
+}: {
+  data: PlannerNodeData;
+  onChange: (patch: Partial<AgentNodeData>) => void;
+}) {
+  return (
+    <>
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span>Goal</span>
+        <textarea
+          data-testid="inspector-goal"
+          className={`${fieldClass} min-h-24`}
+          value={data.taskPrompt ?? ""}
+          placeholder="What should the planner split into tasks?"
+          onChange={(event) => {
+            onChange({ taskPrompt: event.target.value });
+          }}
+        />
+      </label>
+      <p className="text-xs text-zinc-500">
+        The planner only reads files and calls submit_plan. A plan can have at most 8 tasks. Each task runs as its own
+        worker. Not set uses a managed folder for every worker.
+      </p>
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span>Model</span>
+        <input
+          data-testid="inspector-model"
+          className={fieldClass}
+          value={data.modelId ?? ""}
+          placeholder="Model id"
+          onChange={(event) => {
+            onChange({ modelId: event.target.value });
+          }}
+        />
+      </label>
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span>Workspace mode</span>
+        <select
+          data-testid="inspector-workspace-mode"
+          className={fieldClass}
+          value={data.workspaceMode ?? ""}
+          onChange={(event) => {
+            const value = event.target.value;
+            if (value === "") {
+              onChange({ workspaceMode: undefined });
+              return;
+            }
+            const parsed = workspaceModeSchema.safeParse(value);
+            if (!parsed.success) return;
+            onChange({ workspaceMode: parsed.data });
+          }}
+        >
+          <option value="">Not set</option>
+          <option value="repo">repo</option>
+          <option value="managed">managed</option>
+          <option value="folder">folder</option>
+        </select>
+      </label>
+      {data.workspaceMode === "folder" ? (
+        <label className="block space-y-1 text-xs text-zinc-400">
+          <span>Folder</span>
+          <input
+            data-testid="inspector-folder-path"
+            className={fieldClass}
+            value={data.folderPath ?? ""}
+            placeholder="Folder path"
+            onChange={(event) => {
+              const folderPath = event.target.value.trim();
+              onChange({ folderPath: folderPath.length > 0 ? folderPath : undefined });
+            }}
+          />
+        </label>
+      ) : null}
+      {data.workspaceMode === "repo" ? <WorkflowRepositoryField /> : null}
+    </>
   );
 }
 
