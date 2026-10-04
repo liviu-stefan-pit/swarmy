@@ -39,6 +39,8 @@ const resultByRequest = {
   "workflow.run": "workflow.runDone",
   "workflow.resume": "workflow.runDone",
   "workflow.cancel": "workflow.cancelResult",
+  "approval.list": "approval.listResult",
+  "approval.decide": "approval.decideResult",
 } as const;
 
 type EngineRequestType = keyof typeof resultByRequest;
@@ -234,7 +236,9 @@ function isEngineReply(message: EngineMessage): message is EngineSuccess | Engin
     message.type === "run.unfinishedResult" ||
     message.type === "run.failed" ||
     message.type === "workflow.runDone" ||
-    message.type === "workflow.cancelResult"
+    message.type === "workflow.cancelResult" ||
+    message.type === "approval.listResult" ||
+    message.type === "approval.decideResult"
   );
 }
 
@@ -254,6 +258,8 @@ function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessag
     case "run.steer":
       return { timeoutMs: CANCEL_TIMEOUT_MS, timeoutMessage: "Cancel timed out" };
     case "run.unfinished":
+    case "approval.list":
+    case "approval.decide":
       return { timeoutMs: WORKFLOW_TIMEOUT_MS, timeoutMessage: "Workflow request timed out" };
     case "workflow.delete":
     case "workflow.list":

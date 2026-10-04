@@ -2,7 +2,7 @@
 
 Palette label: **Agent**. Type id: `agent`.
 
-An Agent is a Cursor agent. It is the worker in the swarm. It can read text, a file, a folder, and MCP servers. It produces a reply and a diff.
+An Agent is a Cursor agent. It is the worker in the swarm. It can read text, a file, a folder, MCP servers, and a diff. It produces a reply and a diff.
 
 ## On the canvas
 
@@ -10,7 +10,7 @@ Drag **Agent** onto the canvas. The card shows the label, a status pill, **Run**
 
 **Run** on the card sends that agent's task prompt to one Cursor agent. The reply streams into the **Run log** under the canvas. **Cancel** on the card stops that one agent, including while a workflow run is in progress. Nodes that were still waiting on it do not start. An unrelated branch still finishes. Only one card run is active at a time.
 
-**Run** in the workflow toolbar runs the whole graph. **Cancel run** stops every active agent and does not start nodes that were still queued. Independent branches run at the same time. A node waits until every node upstream of it has finished. If one of those fails, this node is marked `failed` and its agent does not start. An unrelated branch still finishes. While a branch is running, its edges animate. An edge turns red when either end has failed. Select a card to read that node's log. The log quotes the upstream handoff summaries.
+**Run** in the workflow toolbar runs the whole graph. **Cancel run** stops every active agent and does not start nodes that were still queued. Independent branches run at the same time. A node waits until every node upstream of it has finished. If one of those fails, this node is marked `failed` and its agent does not start. An unrelated branch still finishes. While a branch is running, its edges animate. An edge turns red when either end has failed. Select a card to read that node's log. The log quotes the upstream handoff summaries. When an [Approval](approval.md) rejects this agent, the note is added to the next prompt and the agent runs again.
 
 While the selected agent is `running`, the run log has a steering box. **Steer** sends that text into the live run. The log says `Steering delivered` when the run accepted it, or `Steering sent as a follow-up` when it is sent as a normal message after the current turn finishes.
 
@@ -45,8 +45,9 @@ Inputs are on the left. Outputs are on the right.
 | `file` | input | `file` | [File](file-input.md) |
 | `folder` | input | `folder` | [Folder](folder-input.md) |
 | `mcp` | input | `mcp` | [MCP](mcp.md) |
+| `diff` | input | `diff` | [Approval](approval.md), another Agent, or [Merge](merge.md) |
 | `text` | output | `text` | another Agent, Planner, or Merge |
-| `diff` | output | `diff` | [Approval](approval.md) or Merge |
+| `diff` | output | `diff` | Approval, another Agent, or Merge |
 
 The `diff` output cannot land on the `file` input. Those types differ, and the canvas refuses the edge. `examples/bad-handle.json` is that mistake.
 

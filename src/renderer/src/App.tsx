@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { appInfo } from "@shared/app-info";
 import type { EngineStatus } from "@shared/protocol";
 import type { ConnectionInfo, HelloInfo } from "@shared/settings";
+import { ApprovalInbox } from "./ApprovalInbox";
 import { RunLog } from "./RunLog";
 import { SettingsForm } from "./SettingsForm";
 import { WorkflowEditor } from "./WorkflowCanvas";
@@ -83,6 +84,7 @@ export function App() {
         <h1 className="text-lg font-semibold tracking-tight">{name}</h1>
       </header>
       <WorkflowEditor />
+      <ApprovalInbox />
       <RunLog />
       <details className="border-t border-zinc-800 px-4 py-2">
         <summary className="cursor-pointer text-sm text-zinc-300">Cursor connection</summary>

@@ -31,7 +31,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 9 | Workspaces | [x] | phase-09 | 2026-10-03 |
 | 10 | LangGraph orchestrator | [x] | phase-10 | 2026-10-03 |
 | 11 | Run control, steering, resume | [x] | phase-11 | 2026-10-04 |
-| 12 | Approval gates | [ ] | | |
+| 12 | Approval gates | [x] | phase-12 | 2026-10-04 |
 | 13 | Diff review | [ ] | | |
 | 14 | Guardrails | [ ] | | |
 | 15 | Observability and budgets | [ ] | | |
@@ -50,7 +50,9 @@ Write changes and wishes here, in your own words. Phase agents must read this se
 
 | Date | Note | Status |
 | --- | --- | --- |
-| | | |
+| 2026-10-04 | Always make the manual test detailed enough that I can go through the app step by step without worrying I missed something. | done |
+
+Phase 12's manual test is now that walkthrough. The same rule is in Conventions, so later phases write their manual tests the same way.
 
 ## Vision
 
@@ -247,6 +249,14 @@ A phase that adds a node type, changes a handle, or changes what the user can do
 
 Why: the canvas is usable before the swarm runs, and the handle rules are easy to forget. The user asked for docs they can look at, including schemas, and for the plan to keep them current.
 
+### D14 — Agent accepts a diff
+
+Date: 2026-10-04. Status: accepted. Supersedes the agent input list in D12.
+
+An agent has a `diff` input, same data type as its `diff` output. An approval's `diff` output can connect to the next agent. D12 did not give the agent a `diff` input, so Agent → approval → agent could not be saved. The type list is unchanged: `text`, `file`, `folder`, `diff`, and `mcp`.
+
+Why: Phase 12's manual test is an agent, then an approval, then another agent. The approval passes the upstream diff along.
+
 ## Conventions
 
 - Language: TypeScript, `strict`, no `any`. Validate every IPC payload and every workflow file with zod.
@@ -259,6 +269,7 @@ Why: the canvas is usable before the swarm runs, and the handle rules are easy t
 - Do not edit `docs/research/**`.
 - Do not add dependencies "for later". Add a dependency in the phase that first imports it.
 - Node docs live in `docs/nodes/` (decision D13). Update the index, `handles.md`, and the node page when a phase adds a type, changes a handle, or changes what the user can do with a node.
+- A manual test is a step-by-step walkthrough of the app. Name each click, which handle to drag, and what should be on screen before the next step. A person should be able to follow it without guessing.
 
 ## Risks
 
@@ -906,9 +917,27 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Agent → approval → agent. Run. The inbox shows one waiting item and the second agent has not started.
-2. Reject with a note. The first agent runs again. Approve. The second agent runs.
-3. Quit while the inbox is waiting. Reopen. The item is still there.
+This uses a real Cursor agent. Leave both agents on workspace mode **Not set**. The run then uses a managed folder, so you do not pick a git repo.
+
+1. In the repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Approval gate` and press Enter. The **Workflows** dropdown should show that name.
+4. From the **Nodes** list, drag **Agent** onto the canvas, then **Approval** to its right, then **Agent** again further right. The cards read **Agent**, **Approval**, and **Agent 2**.
+5. Connect the red **Diff** dots only. Blue, amber, green, and violet dots are the wrong type.
+   - On **Agent**, drag the red **Diff** dot on the right to the red **Diff** dot on the left of **Approval**.
+   - On **Approval**, drag the red **Diff** dot on the right to the red **Diff** dot on the left of **Agent 2**. That left-hand red dot is the last input on the agent card.
+   - You should see two edges. If a red message appears at the top of the canvas, that wire did not stick. Drag from the red dot again.
+6. Click **Agent**. In the inspector, set **Task prompt** to `Reply with exactly: done. Do not create or edit files.` Leave **Workspace mode** on **Not set**.
+7. Click **Agent 2**. Set **Task prompt** to `Reply with exactly: continued. Do not create or edit files.` Leave **Workspace mode** on **Not set**.
+8. Click **Run** in the toolbar. Do not click **Run** on a card.
+9. While the first agent works, its pill reads **running** and **Agent 2** stays **queued**. When the first agent finishes, the **Approval** pill reads **waiting**. **Agent 2** is still **queued**, not **running**. The **Inbox** under the canvas shows one item titled **Approval**, and the summary is the first agent's reply. **Reject** stays disabled until the reason box has text. **Resume** is not shown.
+10. In that inbox item, type `try again` in **Reason for rejecting**, then click **Reject**. The item leaves the inbox. **Agent** runs again. Click **Agent** and the run log includes the line `The approval was rejected: try again`. **Agent 2** still has not started.
+11. When that second pass finishes, the inbox shows one **Approval** item again and the **Approval** pill reads **waiting**. **Agent 2** is still **queued**.
+12. Click **Approve**. **Agent 2** goes **running**, then **completed**. **Approval** reads **completed**. The inbox reads **No approvals waiting.**
+13. Click **Run** again. Wait until the inbox shows one **Approval** item and **Agent 2** is still **queued**. Do not approve or reject.
+14. Close the Swarmy window. If the app is not still running, from the repo run `npm run dev` again. Wait until the footer reads **Engine connected**.
+15. If the canvas is not `Approval gate`, choose it in the **Workflows** dropdown. The **Inbox** shows one **Approval** item again. **Resume** is not shown. Agent pills may read **idle**. That is expected: only the waiting approval is restored. **Agent 2** must not be **running**.
+16. Click **Approve**. **Agent 2** runs and then reads **completed**. The inbox reads **No approvals waiting.**
 
 **Prompt.**
 
@@ -923,7 +952,13 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- An approval node calls LangGraph `interrupt()` and the run waits on that promise. It does not poll. **Approve** resumes with `Command` and the downstream node starts. **Reject** needs a reason. That text is added to the upstream agent's next prompt, the agent runs again, and the inbox asks once more.
+- Three rejections send the agent around again. The fourth fails the approval. The log says `Approval stopped after 3 reject cycles.` The downstream node does not start.
+- The **Inbox** (`approval-inbox`) lists each waiting interrupt. The approval card pill reads `waiting`. Quit while it is waiting and the checkpoint still holds the interrupt. Reopen and the same item is there. **Resume** stays hidden while an approval is waiting. Approve or reject from the inbox.
+- Decision D14: an agent now has a `diff` input, so Agent → approval → agent is a valid graph. That supersedes the agent input list in D12. Node docs updated (decision D13): `docs/nodes/approval.md`, `docs/nodes/agent.md`, the index, and `handles.md`.
+- Follow-up for Phase 13: the agent workspace is still removed when the agent node finishes, which is before the approval is decided. The diff review needs that worktree to still be there.
+- No later phase prompt changed. `npm run verify` exited 0.
+- The manual test above is the step-by-step walkthrough from the 2026-10-04 user note.
 
 ---
 

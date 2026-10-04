@@ -1,5 +1,13 @@
 import type { EngineStatus } from "./protocol";
-import type { RunDone, RunStart, RunUpdate, SteerDelivery, WorkflowRunResult } from "./runs";
+import type {
+  ApprovalDecision,
+  PendingApproval,
+  RunDone,
+  RunStart,
+  RunUpdate,
+  SteerDelivery,
+  WorkflowRunResult,
+} from "./runs";
 import type { ConnectionInfo, HelloInfo } from "./settings";
 import type { Workflow } from "./workflow";
 import type { WorkflowSummary } from "./workflows";
@@ -23,7 +31,9 @@ export interface SwarmyApi {
   runs: {
     start(input: RunStart): Promise<RunDone>;
     startWorkflow(workflow: Workflow): Promise<WorkflowRunResult>;
-    resume(workflow: Workflow, threadId: string): Promise<WorkflowRunResult>;
+    resume(workflow: Workflow, threadId: string, decision?: ApprovalDecision): Promise<WorkflowRunResult>;
+    pendingApprovals(workflow: Workflow, threadId: string): Promise<PendingApproval[]>;
+    decide(decision: ApprovalDecision): Promise<void>;
     cancel(nodeId: string): Promise<void>;
     cancelWorkflow(): Promise<void>;
     steer(nodeId: string, text: string): Promise<SteerDelivery>;

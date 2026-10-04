@@ -1,6 +1,11 @@
 import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
 import { engineStatusChannel, engineStatusSchema, type EngineStatus } from "@shared/protocol";
 import {
+  approvalDecideChannel,
+  approvalDecisionSchema,
+  approvalListChannel,
+  approvalListPayloadSchema,
+  pendingApprovalSchema,
   runCancelChannel,
   runCancelPayloadSchema,
   runStartChannel,
@@ -144,9 +149,21 @@ const swarmy: SwarmyApi = {
       const parsedId = z.string().min(1).parse(threadId);
       return parsedId;
     },
-    async resume(workflow, threadId) {
-      const parsed = workflowResumePayloadSchema.parse({ workflow, threadId });
+    async resume(workflow, threadId, decision) {
+      const parsed = workflowResumePayloadSchema.parse({
+        workflow,
+        threadId,
+        ...(decision ? { decision } : {}),
+      });
       return workflowRunResultSchema.parse(await ipcRenderer.invoke(workflowResumeChannel, parsed));
+    },
+    async pendingApprovals(workflow, threadId) {
+      const parsed = approvalListPayloadSchema.parse({ workflow, threadId });
+      return pendingApprovalSchema.array().parse(await ipcRenderer.invoke(approvalListChannel, parsed));
+    },
+    async decide(decision) {
+      const parsed = approvalDecisionSchema.parse(decision);
+      await ipcRenderer.invoke(approvalDecideChannel, parsed);
     },
     onUpdate(listener) {
       runListeners.add(listener);

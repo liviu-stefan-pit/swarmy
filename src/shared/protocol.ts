@@ -1,5 +1,10 @@
 import { z } from "zod";
-import { nodeRunStatusSchema, runUpdateSchema } from "./runs";
+import {
+  approvalDecisionSchema,
+  nodeRunStatusSchema,
+  pendingApprovalSchema,
+  runUpdateSchema,
+} from "./runs";
 import { workflowSchema, workspaceModeSchema } from "./workflow";
 import { workflowSummarySchema } from "./workflows";
 
@@ -213,6 +218,31 @@ export const workflowResumeMessageSchema = z.object({
   workflow: workflowSchema,
   apiKey: z.string().min(1),
   threadId: z.string().min(1),
+  decision: approvalDecisionSchema.optional(),
+});
+
+export const approvalListMessageSchema = z.object({
+  type: z.literal("approval.list"),
+  id: z.string().min(1),
+  workflow: workflowSchema,
+  threadId: z.string().min(1),
+});
+
+export const approvalListResultMessageSchema = z.object({
+  type: z.literal("approval.listResult"),
+  id: z.string().min(1),
+  approvals: z.array(pendingApprovalSchema),
+});
+
+export const approvalDecideMessageSchema = z.object({
+  type: z.literal("approval.decide"),
+  id: z.string().min(1),
+  decision: approvalDecisionSchema,
+});
+
+export const approvalDecideResultMessageSchema = z.object({
+  type: z.literal("approval.decideResult"),
+  id: z.string().min(1),
 });
 
 export const engineMessageSchema = z.discriminatedUnion("type", [
@@ -250,6 +280,10 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   runUnfinishedMessageSchema,
   runUnfinishedResultMessageSchema,
   workflowResumeMessageSchema,
+  approvalListMessageSchema,
+  approvalListResultMessageSchema,
+  approvalDecideMessageSchema,
+  approvalDecideResultMessageSchema,
 ]);
 
 export type EngineMessage = z.infer<typeof engineMessageSchema>;

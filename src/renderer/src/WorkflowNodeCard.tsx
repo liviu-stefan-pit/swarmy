@@ -20,6 +20,7 @@ const statusClass: Record<NodeRunStatus, string> = {
   idle: "bg-zinc-800 text-zinc-300",
   queued: "bg-zinc-800 text-zinc-200",
   running: "bg-sky-950 text-sky-200",
+  waiting: "bg-amber-950 text-amber-100",
   completed: "bg-emerald-950 text-emerald-200",
   failed: "bg-red-950 text-red-200",
   cancelled: "bg-amber-950 text-amber-200",
@@ -59,7 +60,7 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
       ) : null}
       <header className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{data.label}</h3>
-        {type === "agent" ? (
+        {type === "agent" || type === "approval" ? (
           <span data-testid="node-status" className={`rounded-full px-2 py-0.5 text-xs ${statusClass[status]}`}>
             {status}
           </span>

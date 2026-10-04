@@ -69,6 +69,7 @@ function RunWorkflowButton() {
   const running = useRunStore((state) => state.workflowRunning || state.activeNodeId !== null);
   const workflowRunning = useRunStore((state) => state.workflowRunning);
   const unfinishedThreadId = useRunStore((state) => state.unfinishedThreadId);
+  const approvalsWaiting = useRunStore((state) => state.approvals.length > 0);
 
   useEffect(() => {
     void useRunStore.getState().refreshUnfinished(workflowId);
@@ -99,7 +100,7 @@ function RunWorkflowButton() {
           Cancel run
         </button>
       ) : null}
-      {unfinishedThreadId && !running ? (
+      {unfinishedThreadId && !running && !approvalsWaiting ? (
         <button
           type="button"
           data-testid="resume-workflow"

@@ -1,6 +1,11 @@
 import { ipcMain } from "electron";
 import { randomUUID } from "node:crypto";
 import {
+  approvalDecideChannel,
+  approvalDecisionSchema,
+  approvalListChannel,
+  approvalListPayloadSchema,
+  pendingApprovalSchema,
   runCancelChannel,
   runCancelPayloadSchema,
   runStartChannel,
@@ -132,6 +137,7 @@ export function registerRunIpc(engine: EngineHost): void {
         workflow: parsed.workflow,
         apiKey,
         threadId: parsed.threadId,
+        ...(parsed.decision ? { decision: parsed.decision } : {}),
       });
       if (result.type !== "workflow.runDone") {
         throw new Error("Unexpected engine response");
@@ -139,6 +145,32 @@ export function registerRunIpc(engine: EngineHost): void {
       return workflowRunResultSchema.parse({ statuses: result.statuses });
     } catch (error) {
       throw new Error(scrub(errorText(error), apiKey), { cause: error });
+    }
+  });
+
+  ipcMain.handle(approvalListChannel, async (_event, payload: unknown) => {
+    const parsed = approvalListPayloadSchema.parse(payload);
+    const result = await engine.request({
+      type: "approval.list",
+      id: randomUUID(),
+      workflow: parsed.workflow,
+      threadId: parsed.threadId,
+    });
+    if (result.type !== "approval.listResult") {
+      throw new Error("Unexpected engine response");
+    }
+    return pendingApprovalSchema.array().parse(result.approvals);
+  });
+
+  ipcMain.handle(approvalDecideChannel, async (_event, payload: unknown) => {
+    const decision = approvalDecisionSchema.parse(payload);
+    const result = await engine.request({
+      type: "approval.decide",
+      id: randomUUID(),
+      decision,
+    });
+    if (result.type !== "approval.decideResult") {
+      throw new Error("Unexpected engine response");
     }
   });
 }

@@ -79,12 +79,13 @@ export const nodeTypes: readonly NodeTypeDefinition[] = [
   defineNode({
     type: "agent",
     label: "Agent",
-    description: "A Cursor agent. It reads text, files, folders, and MCP servers, and it writes a reply and a diff.",
+    description: "A Cursor agent. It reads text, files, folders, MCP servers, and diffs, and it writes a reply and a diff.",
     inputs: [
       { id: "text", type: "text", label: "Text" },
       { id: "file", type: "file", label: "File" },
       { id: "folder", type: "folder", label: "Folder" },
       { id: "mcp", type: "mcp", label: "MCP" },
+      { id: "diff", type: "diff", label: "Diff" },
     ],
     outputs: [
       { id: "text", type: "text", label: "Text" },

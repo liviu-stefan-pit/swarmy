@@ -6,7 +6,7 @@ import { parseEngineMessage, type EngineMessage } from "@shared/protocol";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
-import { startWorkflowRun, type WorkflowRunHandle } from "./orchestrator";
+import { listPendingApprovals, startWorkflowRun, type WorkflowRunHandle } from "./orchestrator";
 import { unfinishedThread } from "./run-catalog";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
@@ -123,6 +123,16 @@ export function attachEngine(
 
     if (message.type === "run.unfinished") {
       answerUnfinished(port, message, getCheckpointer);
+      return;
+    }
+
+    if (message.type === "approval.list") {
+      void answerApprovalList(port, message, getCheckpointer);
+      return;
+    }
+
+    if (message.type === "approval.decide") {
+      void answerApprovalDecide(port, message, workflowHandle);
       return;
     }
 
@@ -295,7 +305,13 @@ async function answerWorkflowRun(
       apiKey: message.apiKey,
       workspaces: getWorkspaces(),
       checkpointer: getCheckpointer(),
-      ...(message.type === "workflow.resume" ? { resume: true, threadId: message.threadId } : {}),
+      ...(message.type === "workflow.resume"
+        ? {
+            resume: true,
+            threadId: message.threadId,
+            ...(message.decision ? { decision: message.decision } : {}),
+          }
+        : {}),
       onUpdate(update) {
         port.postMessage({
           type: "run.update",
@@ -389,6 +405,41 @@ function answerUnfinished(
     });
   } catch (error) {
     const text = error instanceof Error && error.message ? error.message : "Could not look up the run";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  }
+}
+
+async function answerApprovalList(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "approval.list" }>,
+  getCheckpointer: () => SqliteCheckpointer,
+): Promise<void> {
+  try {
+    const approvals = await listPendingApprovals({
+      workflow: message.workflow,
+      checkpointer: getCheckpointer(),
+      threadId: message.threadId,
+    });
+    port.postMessage({ type: "approval.listResult", id: message.id, approvals });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not list approvals";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  }
+}
+
+async function answerApprovalDecide(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "approval.decide" }>,
+  handle: WorkflowRunHandle | undefined,
+): Promise<void> {
+  try {
+    if (!handle) {
+      throw new Error("No approval is waiting");
+    }
+    await handle.decide(message.decision);
+    port.postMessage({ type: "approval.decideResult", id: message.id });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not record the decision";
     port.postMessage({ type: "run.failed", id: message.id, message: text });
   }
 }

@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { NodeRunStatus, RunUpdate } from "@shared/runs";
+import type { ApprovalDecision, NodeRunStatus, PendingApproval, RunUpdate } from "@shared/runs";
 import { useWorkflowStore } from "./workflow-store";
 
 type RunState = {
@@ -10,10 +10,12 @@ type RunState = {
   activeNodeId: string | null;
   workflowRunning: boolean;
   unfinishedThreadId: string | null;
+  approvals: PendingApproval[];
   start: (nodeId: string) => Promise<void>;
   startWorkflow: () => Promise<void>;
   resume: () => Promise<void>;
   refreshUnfinished: (workflowId: string) => Promise<void>;
+  decide: (decision: ApprovalDecision) => Promise<void>;
   cancel: (nodeId?: string) => Promise<void>;
   cancelWorkflow: () => Promise<void>;
   steer: (nodeId: string, text: string) => Promise<void>;
@@ -27,6 +29,7 @@ export const useRunStore = create<RunState>((set, get) => ({
   activeNodeId: null,
   workflowRunning: false,
   unfinishedThreadId: null,
+  approvals: [],
   async start(nodeId) {
     if (get().activeNodeId || get().workflowRunning) {
       return;
@@ -84,6 +87,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       log: "",
       workspacePath: null,
       logsByNode: {},
+      approvals: [],
       statusByNode: Object.fromEntries(workflow.nodes.map((node) => [node.id, "queued" as const])),
     });
 
@@ -145,9 +149,72 @@ export const useRunStore = create<RunState>((set, get) => ({
       if (get().workflowRunning) {
         return;
       }
-      set({ unfinishedThreadId: threadId });
+      if (!threadId) {
+        set({ unfinishedThreadId: null, approvals: [] });
+        return;
+      }
+      const workflow = useWorkflowStore.getState().workflow;
+      const approvals = await window.swarmy.runs.pendingApprovals(workflow, threadId);
+      if (get().workflowRunning) {
+        return;
+      }
+      const statusByNode = { ...get().statusByNode };
+      const logsByNode = { ...get().logsByNode };
+      for (const item of approvals) {
+        statusByNode[item.nodeId] = "waiting";
+        logsByNode[item.nodeId] = item.summary;
+      }
+      set({ unfinishedThreadId: threadId, approvals, statusByNode, logsByNode });
     } catch {
       set({ unfinishedThreadId: null });
+    }
+  },
+  async decide(decision) {
+    const reason = decision.reason?.trim() ?? "";
+    if (decision.action === "reject" && reason.length === 0) {
+      return;
+    }
+    const payload: ApprovalDecision =
+      decision.action === "reject"
+        ? { nodeId: decision.nodeId, action: "reject", reason }
+        : { nodeId: decision.nodeId, action: "approve" };
+    set({ approvals: get().approvals.filter((item) => item.nodeId !== decision.nodeId) });
+    if (get().workflowRunning) {
+      try {
+        await window.swarmy.runs.decide(payload);
+      } catch (error) {
+        set({ log: errorText(error) });
+      }
+      return;
+    }
+
+    const threadId = get().unfinishedThreadId;
+    if (!threadId) {
+      return;
+    }
+    const workflow = useWorkflowStore.getState().workflow;
+    set({
+      workflowRunning: true,
+      unfinishedThreadId: null,
+      log: "",
+      workspacePath: null,
+    });
+    const stop = window.swarmy.runs.onUpdate((update) => {
+      applyUpdate(set, get, update);
+    });
+    try {
+      const result = await window.swarmy.runs.resume(workflow, threadId, payload);
+      const statusByNode = { ...get().statusByNode };
+      for (const [nodeId, status] of Object.entries(result.statuses)) {
+        statusByNode[nodeId] = status;
+      }
+      set({ statusByNode, approvals: [] });
+    } catch (error) {
+      set({ log: errorText(error) });
+    } finally {
+      stop();
+      set({ workflowRunning: false });
+      await get().refreshUnfinished(workflow.id);
     }
   },
   async cancel(nodeId) {
@@ -199,10 +266,18 @@ function applyUpdate(
   get: () => RunState,
   update: RunUpdate,
 ): void {
+  const approvals =
+    update.status === "waiting"
+      ? [
+          ...get().approvals.filter((item) => item.nodeId !== update.nodeId),
+          { nodeId: update.nodeId, summary: update.log },
+        ]
+      : get().approvals.filter((item) => item.nodeId !== update.nodeId);
   set({
     log: update.log,
     logsByNode: { ...get().logsByNode, [update.nodeId]: update.log },
     statusByNode: { ...get().statusByNode, [update.nodeId]: update.status },
+    approvals,
     ...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
   });
 }

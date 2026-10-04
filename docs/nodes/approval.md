@@ -11,18 +11,23 @@ Drag **Approval** onto the canvas. It has one red input and one red output, both
 | Handle | Direction | Type | Connect it to |
 | --- | --- | --- | --- |
 | `diff` | input | `diff` | [Agent](agent.md), another Approval, or [Merge](merge.md) |
-| `diff` | output | `diff` | another Approval, or Merge |
+| `diff` | output | `diff` | another Approval, an [Agent](agent.md), or Merge |
 
-A text, file, folder, or MCP wire cannot land here. The usual line is Agent `diff` → Approval `diff`.
+A text, file, folder, or MCP wire cannot land here. The usual line is Agent `diff` → Approval `diff` → Agent `diff`.
+
+## On a run
+
+Press **Run**. When the upstream agent finishes, this node pauses. The **Inbox** under the canvas lists it, and the second agent has not started. The card pill reads `waiting`.
+
+**Approve** lets the diff continue to the next node. **Reject** needs a reason. That note is added to the upstream agent's prompt, and that agent runs again. Then the inbox asks once more. Three rejections can send the agent around again. The fourth rejection stops the branch. The approval card reads `failed`, and the error says the run stopped after 3 reject cycles.
+
+Quit the app while the inbox is waiting. Reopen it. The same item is still there. Approve or reject from that item. There is no separate **Resume** button while an approval is waiting.
 
 ## Later
 
 | Phase | What arrives |
 | --- | --- |
-| 12 | The run pauses on this node. An inbox lists it. Approve continues. Reject, with a reason, reruns the upstream agent, up to 3 cycles |
 | 13 | A side-by-side diff. Edits on the right-hand side are what get approved |
-
-Until Phase 12 the card is only the diff gate in the graph. The run does not pause here yet.
 
 ## Schema
 

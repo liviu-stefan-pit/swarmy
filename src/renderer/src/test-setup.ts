@@ -95,6 +95,12 @@ const swarmy: SwarmyApi = {
     resume() {
       return Promise.resolve({ statuses: {} });
     },
+    pendingApprovals() {
+      return Promise.resolve([]);
+    },
+    decide() {
+      return Promise.resolve();
+    },
     onUpdate() {
       return () => undefined;
     },
