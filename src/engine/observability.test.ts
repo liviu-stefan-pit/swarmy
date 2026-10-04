@@ -125,6 +125,52 @@ function isNodeRow(value: unknown): value is {
   );
 }
 
+function tokenPartRow(dbPath: string, threadId: string, nodeId: string): {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+} {
+  const db = openSqliteDatabase(dbPath);
+  try {
+    const row: unknown = db
+      .prepare(
+        `SELECT input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+         FROM run_nodes
+         WHERE thread_id = ? AND node_id = ?`,
+      )
+      .get(threadId, nodeId);
+    if (!isTokenPartRow(row)) {
+      throw new Error(`No token parts for ${nodeId}`);
+    }
+    return row;
+  } finally {
+    db.close();
+  }
+}
+
+function isTokenPartRow(value: unknown): value is {
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
+} {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const row = value as Record<string, unknown>;
+  return (
+    isTokenCount(row.input_tokens) &&
+    isTokenCount(row.output_tokens) &&
+    isTokenCount(row.cache_read_tokens) &&
+    isTokenCount(row.cache_write_tokens)
+  );
+}
+
+function isTokenCount(value: unknown): value is number | null {
+  return value === null || typeof value === "number";
+}
+
 function isStatusRow(value: unknown): value is { status: string } {
   return typeof value === "object" && value !== null && typeof (value as { status?: unknown }).status === "string";
 }
@@ -154,6 +200,54 @@ it("stores token usage from a fake run on the node row", async () => {
     });
 
     expect(nodeRow(dbPath, "usage-run", "solo").total_tokens).toBe(10);
+  } finally {
+    checkpointer.close();
+    fetchSpy.mockRestore();
+    await rm(dir, { recursive: true, force: true });
+  }
+});
+
+it("stores each token part and the SDK total as their sum", async () => {
+  const fetchSpy = blockNetwork();
+  const dir = await mkdtemp(join(tmpdir(), "swarmy-obs-"));
+  const dbPath = join(dir, "swarmy.db");
+  const checkpointer = SqliteCheckpointer.open(dbPath);
+  const runtime = new FakeRuntime({
+    ...baseScript,
+    prompts: {
+      "solo-task": {
+        chunks: ["split"],
+        result: "split",
+        usage: {
+          inputTokens: 2,
+          outputTokens: 3,
+          cacheReadTokens: 5,
+          cacheWriteTokens: 7,
+          totalTokens: 17,
+        },
+      },
+    },
+  });
+
+  try {
+    await withWorkspaces(async (workspaces) => {
+      await runWorkflow({
+        workflow: oneAgent("split-workflow", "solo-task"),
+        runtime,
+        apiKey: "fake-key",
+        workspaces,
+        checkpointer,
+        threadId: "split-run",
+      });
+    });
+
+    expect(nodeRow(dbPath, "split-run", "solo").total_tokens).toBe(17);
+    expect(tokenPartRow(dbPath, "split-run", "solo")).toEqual({
+      input_tokens: 2,
+      output_tokens: 3,
+      cache_read_tokens: 5,
+      cache_write_tokens: 7,
+    });
   } finally {
     checkpointer.close();
     fetchSpy.mockRestore();
@@ -307,6 +401,12 @@ it("keeps the next agent when a token budget is set but usage was not reported",
     });
 
     expect(nodeRow(dbPath, "missing-tokens-run", "first").total_tokens).toBeNull();
+    expect(tokenPartRow(dbPath, "missing-tokens-run", "first")).toEqual({
+      input_tokens: null,
+      output_tokens: null,
+      cache_read_tokens: null,
+      cache_write_tokens: null,
+    });
     expect(runStatus(dbPath, "missing-tokens-run")).toBe("completed");
   } finally {
     checkpointer.close();

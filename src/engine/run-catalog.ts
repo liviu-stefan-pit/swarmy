@@ -14,6 +14,10 @@ export interface RunNodeRecordInput {
   nodeId: string;
   transcript: string;
   totalTokens: number | undefined;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   chargedCents: number | undefined;
 }
 
@@ -28,6 +32,10 @@ export interface RunHistoryNode {
   nodeId: string;
   transcript: string;
   totalTokens: number | null;
+  inputTokens: number | null;
+  outputTokens: number | null;
+  cacheReadTokens: number | null;
+  cacheWriteTokens: number | null;
   costState: RunCostState;
   chargedCents: number | null;
 }
@@ -91,6 +99,10 @@ export function openRunCatalog(path: string): RunCatalog {
       PRIMARY KEY (thread_id, node_id)
     )
   `);
+  ensureColumn(db, "run_nodes", "input_tokens", "INTEGER");
+  ensureColumn(db, "run_nodes", "output_tokens", "INTEGER");
+  ensureColumn(db, "run_nodes", "cache_read_tokens", "INTEGER");
+  ensureColumn(db, "run_nodes", "cache_write_tokens", "INTEGER");
 
   return {
     markRunning(threadId, workflowId) {
@@ -137,20 +149,31 @@ export function openRunCatalog(path: string): RunCatalog {
     recordNode(input) {
       const pending = input.chargedCents === undefined;
       db.prepare(
-        `INSERT INTO run_nodes (thread_id, node_id, transcript, total_tokens, cost_state, charged_cents)
-         VALUES (?, ?, ?, ?, ?, ?)
+        `INSERT INTO run_nodes (
+           thread_id, node_id, transcript, total_tokens, cost_state, charged_cents,
+           input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
+         )
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
          ON CONFLICT(thread_id, node_id) DO UPDATE SET
            transcript = excluded.transcript,
            total_tokens = excluded.total_tokens,
            cost_state = excluded.cost_state,
-           charged_cents = excluded.charged_cents`,
+           charged_cents = excluded.charged_cents,
+           input_tokens = excluded.input_tokens,
+           output_tokens = excluded.output_tokens,
+           cache_read_tokens = excluded.cache_read_tokens,
+           cache_write_tokens = excluded.cache_write_tokens`,
       ).run(
         input.threadId,
         input.nodeId,
         input.transcript,
-        input.totalTokens === undefined ? null : input.totalTokens,
+        storedCount(input.totalTokens),
         pending ? "pending" : "known",
         pending ? null : input.chargedCents,
+        storedCount(input.inputTokens),
+        storedCount(input.outputTokens),
+        storedCount(input.cacheReadTokens),
+        storedCount(input.cacheWriteTokens),
       );
     },
     knownChargedCents(threadId) {
@@ -207,7 +230,8 @@ export function openRunCatalog(path: string): RunCatalog {
       }
       const nodes: unknown = db
         .prepare(
-          `SELECT node_id, transcript, total_tokens, cost_state, charged_cents
+          `SELECT node_id, transcript, total_tokens, cost_state, charged_cents,
+                  input_tokens, output_tokens, cache_read_tokens, cache_write_tokens
            FROM run_nodes
            WHERE thread_id = ?
            ORDER BY node_id ASC`,
@@ -265,11 +289,19 @@ function toHistoryEntry(row: HistoryRow): RunHistoryEntry {
   };
 }
 
+function storedCount(value: number | undefined): number | null {
+  return value === undefined ? null : value;
+}
+
 function toHistoryNode(row: NodeHistoryRow): RunHistoryNode {
   return {
     nodeId: row.node_id,
     transcript: row.transcript,
     totalTokens: row.total_tokens,
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+    cacheReadTokens: row.cache_read_tokens,
+    cacheWriteTokens: row.cache_write_tokens,
     costState: row.cost_state === "known" ? "known" : "pending",
     chargedCents: row.cost_state === "known" ? row.charged_cents : null,
   };
@@ -327,6 +359,10 @@ interface NodeHistoryRow {
   node_id: string;
   transcript: string;
   total_tokens: number | null;
+  input_tokens: number | null;
+  output_tokens: number | null;
+  cache_read_tokens: number | null;
+  cache_write_tokens: number | null;
   cost_state: string;
   charged_cents: number | null;
 }
@@ -336,10 +372,18 @@ function isNodeHistoryRow(value: unknown): value is NodeHistoryRow {
     isRecord(value) &&
     typeof value.node_id === "string" &&
     typeof value.transcript === "string" &&
-    (value.total_tokens === null || typeof value.total_tokens === "number") &&
+    isStoredCount(value.total_tokens) &&
+    isStoredCount(value.input_tokens) &&
+    isStoredCount(value.output_tokens) &&
+    isStoredCount(value.cache_read_tokens) &&
+    isStoredCount(value.cache_write_tokens) &&
     typeof value.cost_state === "string" &&
     (value.charged_cents === null || typeof value.charged_cents === "number")
   );
+}
+
+function isStoredCount(value: unknown): value is number | null {
+  return value === null || typeof value === "number";
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {

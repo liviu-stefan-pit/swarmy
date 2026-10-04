@@ -25,7 +25,13 @@ export interface FakePromptScript {
   handoff?: Record<string, unknown>;
   task?: BoardTask;
   steer?: SteerAck;
-  usage?: { totalTokens: number };
+  usage?: {
+    totalTokens: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+  };
   /** Present only when this script reports a cost, including a real zero. */
   chargedCents?: number;
 }
@@ -114,7 +120,17 @@ function withScriptUsage(result: RuntimeRunResult, script: FakePromptScript): Ru
   if (!script.usage) {
     return result;
   }
-  return { ...result, usage: { totalTokens: script.usage.totalTokens } };
+  const usage = script.usage;
+  return {
+    ...result,
+    usage: {
+      totalTokens: usage.totalTokens,
+      ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
+      ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+      ...(usage.cacheReadTokens !== undefined ? { cacheReadTokens: usage.cacheReadTokens } : {}),
+      ...(usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
+    },
+  };
 }
 
 function resolveScript(script: FakeRuntimeScript, prompt: string): FakePromptScript {

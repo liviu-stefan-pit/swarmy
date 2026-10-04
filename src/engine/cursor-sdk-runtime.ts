@@ -33,6 +33,7 @@ import type {
   RuntimeCost,
   RuntimeModel,
   RuntimeRun,
+  RuntimeTokenUsage,
   RuntimeRunResult,
   SteerAck,
 } from "./runtime";
@@ -448,11 +449,17 @@ function toRuntimeResult(result: RunResult, live: TokenUsage | undefined): Runti
   return { status: "finished", text: result.result ?? "", ...(usage ? { usage } : {}) };
 }
 
-function tokenUsage(usage: TokenUsage | undefined): { totalTokens: number } | undefined {
+function tokenUsage(usage: TokenUsage | undefined): RuntimeTokenUsage | undefined {
   if (!usage) {
     return undefined;
   }
-  return { totalTokens: usage.totalTokens };
+  return {
+    totalTokens: usage.totalTokens,
+    inputTokens: usage.inputTokens,
+    outputTokens: usage.outputTokens,
+    cacheReadTokens: usage.cacheReadTokens,
+    cacheWriteTokens: usage.cacheWriteTokens,
+  };
 }
 
 function costFromUsage(report: AgentUsage): RuntimeCost {

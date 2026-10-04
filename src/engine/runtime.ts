@@ -28,6 +28,10 @@ export type RuntimeRunStatus = "finished" | "error" | "cancelled";
 
 export interface RuntimeTokenUsage {
   totalTokens: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
 }
 
 /** Dollar cost from `agent.getUsage()`. Omit `chargedCents` when the SDK has not reported a cost. */

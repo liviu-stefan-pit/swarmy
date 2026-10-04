@@ -5,6 +5,7 @@ import type {
   RuntimeEvent,
   RuntimeRun,
   RuntimeRunResult,
+  RuntimeTokenUsage,
   SteerAck,
 } from "./runtime";
 
@@ -23,6 +24,10 @@ export interface AgentRunOutcome {
   text: string;
   error?: string;
   totalTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   chargedCents?: number;
 }
 
@@ -157,7 +162,7 @@ export function startAgentRun(input: {
           note("Waiting for the dollar cost before the next agent.");
         });
         return finish(followed, log, report, {
-          totalTokens: addTokens(result.usage?.totalTokens, followed.usage?.totalTokens),
+          ...combinedUsage(result.usage, followed.usage),
           chargedCents,
         });
       }
@@ -165,7 +170,7 @@ export function startAgentRun(input: {
         note("Waiting for the dollar cost before the next agent.");
       });
       return finish(result, log, report, {
-        totalTokens: result.usage?.totalTokens,
+        ...usageParts(result.usage),
         chargedCents,
       });
     } catch (error) {
@@ -241,6 +246,10 @@ function addTokens(left: number | undefined, right: number | undefined): number 
 
 interface RunAccounting {
   totalTokens?: number;
+  inputTokens?: number;
+  outputTokens?: number;
+  cacheReadTokens?: number;
+  cacheWriteTokens?: number;
   chargedCents?: number;
 }
 
@@ -270,8 +279,47 @@ function account(outcome: AgentRunOutcome, accounting: RunAccounting): AgentRunO
   return {
     ...outcome,
     ...(accounting.totalTokens !== undefined ? { totalTokens: accounting.totalTokens } : {}),
+    ...(accounting.inputTokens !== undefined ? { inputTokens: accounting.inputTokens } : {}),
+    ...(accounting.outputTokens !== undefined ? { outputTokens: accounting.outputTokens } : {}),
+    ...(accounting.cacheReadTokens !== undefined ? { cacheReadTokens: accounting.cacheReadTokens } : {}),
+    ...(accounting.cacheWriteTokens !== undefined ? { cacheWriteTokens: accounting.cacheWriteTokens } : {}),
     ...(accounting.chargedCents !== undefined ? { chargedCents: accounting.chargedCents } : {}),
   };
+}
+
+function usageParts(usage: RuntimeTokenUsage | undefined): RunAccounting {
+  if (!usage) {
+    return {};
+  }
+  return {
+    totalTokens: usage.totalTokens,
+    ...(usage.inputTokens !== undefined ? { inputTokens: usage.inputTokens } : {}),
+    ...(usage.outputTokens !== undefined ? { outputTokens: usage.outputTokens } : {}),
+    ...(usage.cacheReadTokens !== undefined ? { cacheReadTokens: usage.cacheReadTokens } : {}),
+    ...(usage.cacheWriteTokens !== undefined ? { cacheWriteTokens: usage.cacheWriteTokens } : {}),
+  };
+}
+
+function combinedUsage(left: RuntimeTokenUsage | undefined, right: RuntimeTokenUsage | undefined): RunAccounting {
+  const totalTokens = addTokens(left?.totalTokens, right?.totalTokens);
+  return {
+    ...(totalTokens !== undefined ? { totalTokens } : {}),
+    ...summedPart(left?.inputTokens, right?.inputTokens, "inputTokens"),
+    ...summedPart(left?.outputTokens, right?.outputTokens, "outputTokens"),
+    ...summedPart(left?.cacheReadTokens, right?.cacheReadTokens, "cacheReadTokens"),
+    ...summedPart(left?.cacheWriteTokens, right?.cacheWriteTokens, "cacheWriteTokens"),
+  };
+}
+
+function summedPart(
+  left: number | undefined,
+  right: number | undefined,
+  key: "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens",
+): RunAccounting {
+  if (left === undefined || right === undefined) {
+    return {};
+  }
+  return { [key]: left + right };
 }
 
 function createRequest(request: AgentRunRequest): CreateAgentRequest {

@@ -609,7 +609,15 @@ function noteSingleRunBudget(
 function persistSingleRun(
   message: Extract<EngineMessage, { type: "run.start" }>,
   log: string,
-  outcome: { status: "completed" | "failed" | "cancelled"; totalTokens?: number; chargedCents?: number },
+  outcome: {
+    status: "completed" | "failed" | "cancelled";
+    totalTokens?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    chargedCents?: number;
+  },
   agentId: string,
 ): void {
   if (!message.workflowId || (process.env.VITEST === "true" && !process.env.SWARMY_DATA_DIR?.trim())) {
@@ -628,6 +636,10 @@ function persistSingleRun(
       nodeId: message.nodeId,
       transcript: log,
       totalTokens: outcome.totalTokens,
+      inputTokens: outcome.inputTokens,
+      outputTokens: outcome.outputTokens,
+      cacheReadTokens: outcome.cacheReadTokens,
+      cacheWriteTokens: outcome.cacheWriteTokens,
       chargedCents: outcome.chargedCents,
     });
     const overBudget =

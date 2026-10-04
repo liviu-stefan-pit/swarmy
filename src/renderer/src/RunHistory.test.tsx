@@ -78,3 +78,76 @@ it("shows checkpoints in order and forks the selected one", async () => {
   });
   expect(useRunStore.getState().unfinishedThreadId).toBe("thread-2");
 });
+
+it("shows the summed token total and the cache-read split", async () => {
+  vi.spyOn(window.swarmy.runs, "history").mockResolvedValue([
+    { threadId: "thread-1", status: "completed", startedAt: 1, endedAt: 2 },
+  ]);
+  vi.spyOn(window.swarmy.runs, "openHistory").mockResolvedValue({
+    threadId: "thread-1",
+    status: "completed",
+    startedAt: 1,
+    endedAt: 2,
+    nodes: [
+      tokenNode("first", 7, { inputTokens: 2, outputTokens: 1, cacheReadTokens: 4, cacheWriteTokens: 0 }),
+      tokenNode("second", 9, { inputTokens: 3, outputTokens: 1, cacheReadTokens: 5, cacheWriteTokens: 0 }),
+      tokenNode("third", 12, { inputTokens: 4, outputTokens: 1, cacheReadTokens: 6, cacheWriteTokens: 1 }),
+    ],
+  });
+  vi.spyOn(window.swarmy.runs, "checkpoints").mockResolvedValue([]);
+
+  render(<RunHistory />);
+  fireEvent.change(await screen.findByTestId("run-history-list"), { target: { value: "thread-1" } });
+
+  expect(await screen.findByTestId("run-history-tokens")).toHaveTextContent(
+    "28 tokens (input 9, output 3, cache read 15, cache write 1)",
+  );
+});
+
+it("shows only the token total when the parts were not stored", async () => {
+  vi.spyOn(window.swarmy.runs, "history").mockResolvedValue([
+    { threadId: "thread-1", status: "completed", startedAt: 1, endedAt: 2 },
+  ]);
+  vi.spyOn(window.swarmy.runs, "openHistory").mockResolvedValue({
+    threadId: "thread-1",
+    status: "completed",
+    startedAt: 1,
+    endedAt: 2,
+    nodes: [
+      tokenNode("first", 7, null),
+      tokenNode("second", 9, null),
+      tokenNode("third", 12, null),
+    ],
+  });
+  vi.spyOn(window.swarmy.runs, "checkpoints").mockResolvedValue([]);
+
+  render(<RunHistory />);
+  fireEvent.change(await screen.findByTestId("run-history-list"), { target: { value: "thread-1" } });
+
+  const line = await screen.findByTestId("run-history-tokens");
+  expect(line).toHaveTextContent("28 tokens");
+  expect(line).not.toHaveTextContent("cache read");
+});
+
+function tokenNode(
+  nodeId: string,
+  totalTokens: number,
+  parts: {
+    inputTokens: number;
+    outputTokens: number;
+    cacheReadTokens: number;
+    cacheWriteTokens: number;
+  } | null,
+) {
+  return {
+    nodeId,
+    transcript: "",
+    totalTokens,
+    costState: "known" as const,
+    chargedCents: null,
+    inputTokens: parts?.inputTokens ?? null,
+    outputTokens: parts?.outputTokens ?? null,
+    cacheReadTokens: parts?.cacheReadTokens ?? null,
+    cacheWriteTokens: parts?.cacheWriteTokens ?? null,
+  };
+}

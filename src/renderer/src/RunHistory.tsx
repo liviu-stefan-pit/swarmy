@@ -13,12 +13,40 @@ function errorText(error: unknown): string {
 }
 
 function tokenLabel(nodes: RunHistoryDetail["nodes"]): string {
-  const reported = nodes.flatMap((node) => (node.totalTokens === null ? [] : [node.totalTokens]));
+  const reported = nodes.filter((node) => node.totalTokens !== null);
   if (reported.length === 0) {
     return "tokens unavailable";
   }
-  const total = reported.reduce((sum, value) => sum + value, 0);
-  return total === 1 ? "1 token" : `${total} tokens`;
+  const total = reported.reduce((sum, node) => sum + (node.totalTokens ?? 0), 0);
+  const head = total === 1 ? "1 token" : `${total} tokens`;
+  if (!reported.every(hasTokenParts)) {
+    return head;
+  }
+  const input = sumPart(reported, "inputTokens");
+  const output = sumPart(reported, "outputTokens");
+  const cacheRead = sumPart(reported, "cacheReadTokens");
+  const cacheWrite = sumPart(reported, "cacheWriteTokens");
+  return `${head} (input ${input}, output ${output}, cache read ${cacheRead}, cache write ${cacheWrite})`;
+}
+
+function hasTokenParts(node: RunHistoryDetail["nodes"][number]): boolean {
+  return (
+    isCount(node.inputTokens) &&
+    isCount(node.outputTokens) &&
+    isCount(node.cacheReadTokens) &&
+    isCount(node.cacheWriteTokens)
+  );
+}
+
+function isCount(value: number | null | undefined): value is number {
+  return typeof value === "number";
+}
+
+function sumPart(
+  nodes: RunHistoryDetail["nodes"],
+  key: "inputTokens" | "outputTokens" | "cacheReadTokens" | "cacheWriteTokens",
+): number {
+  return nodes.reduce((sum, node) => sum + (node[key] ?? 0), 0);
 }
 
 function costLabel(nodes: RunHistoryDetail["nodes"]): string {

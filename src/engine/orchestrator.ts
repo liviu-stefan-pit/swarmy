@@ -835,12 +835,12 @@ async function executeAgent(
       await session.cancel();
     }
     const outcome = await session.done;
-    rememberNode(input, node.id, outcome.log, outcome.totalTokens, outcome.chargedCents);
+    rememberNode(input, node.id, outcome.log, outcome);
     input.noteTokens(outcome.totalTokens);
     const stop = budgetStopFor(input, outcome.status, outcome.totalTokens);
     if (stop) {
       const transcript = joinLog(outcome.log, stop);
-      rememberNode(input, node.id, transcript, outcome.totalTokens, outcome.chargedCents);
+      rememberNode(input, node.id, transcript, outcome);
       input.noteBudgetStop(stop);
       report(outcome.status, transcript, workspacePath);
       await input.markBudgetExceeded();
@@ -1087,15 +1087,25 @@ function rememberNode(
   input: RunContext,
   nodeId: string,
   transcript: string,
-  totalTokens: number | undefined,
-  chargedCents: number | undefined,
+  outcome: {
+    totalTokens?: number;
+    inputTokens?: number;
+    outputTokens?: number;
+    cacheReadTokens?: number;
+    cacheWriteTokens?: number;
+    chargedCents?: number;
+  },
 ): void {
   input.catalog?.recordNode({
     threadId: input.threadId,
     nodeId,
     transcript,
-    totalTokens,
-    chargedCents,
+    totalTokens: outcome.totalTokens,
+    inputTokens: outcome.inputTokens,
+    outputTokens: outcome.outputTokens,
+    cacheReadTokens: outcome.cacheReadTokens,
+    cacheWriteTokens: outcome.cacheWriteTokens,
+    chargedCents: outcome.chargedCents,
   });
 }
 
@@ -1122,7 +1132,7 @@ function budgetSnapshot(input: RunContext, nodeId: string): NodeUpdate {
     blockers: [],
   };
   input.onUpdate?.({ nodeId, status: "cancelled", log: summary });
-  rememberNode(input, nodeId, summary, undefined, undefined);
+  rememberNode(input, nodeId, summary, {});
   return { snapshots: { [nodeId]: { status: "cancelled", handoff } }, routes: { [nodeId]: "fail" } };
 }
 

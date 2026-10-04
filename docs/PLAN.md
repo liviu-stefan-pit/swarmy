@@ -39,7 +39,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 15.6 | Resize and collapse panels | [x] | phase-15.6 | 2026-10-04 |
 | 16 | Time travel | [x] | phase-16 | 2026-10-04 |
 | 17 | Shared task board | [x] | phase-17 | 2026-10-04 |
-| 17.5 | Token use | [ ] | | |
+| 17.5 | Token use | [x] | phase-17.5 | 2026-10-04 |
 | 18 | Planner node | [ ] | | |
 | 19 | Merge node | [ ] | | |
 | 20 | Inputs and MCP | [ ] | | |
@@ -1502,7 +1502,17 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-The click path depends on the accepted change, so the plan writes these steps before any code. They replace this paragraph. They use `C:\prod\scratch-repo` if a real agent is required, leave **Token budget** empty unless the plan is about the budget, and tell the user which number to read in **History**.
+This uses one real Cursor agent. The repository is `C:\prod\scratch-repo`. Leave **Token budget** empty. Leave **Guardrails** unchecked. Leave **Tools** on **Default**. The history total will still be in the tens of thousands. This change explains that number. It does not make it smaller.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Token use` and press Tab. The **Workflows** dropdown should show that name. Leave **Token budget** empty.
+4. From the **Nodes** list, drag **Agent** onto the canvas once. The card reads **Agent**.
+5. Click **Agent**. In the inspector, set **Workspace mode** to `repo`. A **Repository** field appears. Paste `C:\prod\scratch-repo`. Leave **Tools** on **Default**. Leave **Guardrails** unchecked. Leave **System prompt** empty. Set **Task prompt** to `Create a file named token-use.txt containing the single word token, then commit it with the message token-use. Do not push. Do not edit other files.`
+6. In the toolbar, click **Run**. Do not click **Run** on the card.
+7. Wait until the pill reads **completed**. The **Run log** should mention the commit. It should not say the run was cancelled.
+8. Open the **History** dropdown under the canvas and choose the newest run.
+9. Read the line under that run. It looks like `N tokens (input A, output B, cache read C, cache write D)`. `N` is the SDK total. `A + B + C + D` equals `N`. On this short task, `N` is still tens of thousands, `A` is the large fresh-input part, `C` is the cache-read part beside that total, and `B` is small. `C` is included in `N`, not added on top of it. `D` may be 0. The dollar line is unchanged (`cost pending` or a dollar amount). It must not say `$0.00` unless Cursor reported a real zero.
 
 **Prompt.**
 
@@ -1521,7 +1531,10 @@ Do not renumber Phase 18.
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- History keeps the SDK `totalTokens` and now stores input, output, cache read, and cache write beside it. The history line is `N tokens (input A, output B, cache read C, cache write D)` when every node that has a total also has all four parts. Those parts add up to `N`. Cache read is inside `N`. A missing usage stays unset, and an older row that only has a total stays `N tokens` with no zeros filled in. The token budget still adds `totalTokens` (decision D16). No new decision.
+- The Phase 16 run `ec4d15f2` on disk already had the split in the agent store. Each total matched the four parts. Cache write was 0. Agent was input 44837, output 847, cache read 33024, total 78708. Agent 2 was 45324, 775, 33920, 80019. Agent 3 was 45345, 809, 33600, 79754. The fork was Agent 2 at 45256, 818, 28512, 74586 and Agent 3 at 45524, 811, 37888, 84223. The saved transcripts were about a thousand characters, and the tool log was a few thousand more, so the prompt text is not the ~45,000 fresh input.
+- `docs/nodes/agent.md` describes that history line. Handles did not change. Phase 18 is unchanged.
+- `npm run verify` exited 0.
 
 ---
 

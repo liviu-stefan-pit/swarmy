@@ -113,6 +113,10 @@ export const runHistoryNodeSchema = z.object({
   nodeId: z.string().min(1),
   transcript: z.string(),
   totalTokens: z.number().int().nonnegative().nullable(),
+  inputTokens: z.number().int().nonnegative().nullable(),
+  outputTokens: z.number().int().nonnegative().nullable(),
+  cacheReadTokens: z.number().int().nonnegative().nullable(),
+  cacheWriteTokens: z.number().int().nonnegative().nullable(),
   costState: runCostStateSchema,
   chargedCents: z.number().nullable(),
 });
