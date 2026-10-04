@@ -16,6 +16,7 @@ import {
   type PlannerNodeData,
   type Position,
   type Viewport,
+  type Trigger,
   type Workflow,
   type WorkflowNode,
 } from "@shared/workflow";
@@ -45,6 +46,7 @@ type WorkflowState = {
   setRepositoryPath: (path: string) => void;
   setBudget: (tokens: number | null) => void;
   setRequiredEnvVars: (names: string[]) => void;
+  setTrigger: (trigger: Trigger | null) => void;
 };
 
 function nextId(prefix: string, ids: readonly string[]): string {
@@ -215,6 +217,20 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
       delete next.requiredEnvVars;
     } else {
       next.requiredEnvVars = names;
+    }
+    const parsed = workflowSchema.safeParse(next);
+    if (!parsed.success) {
+      return;
+    }
+    set({ workflow: parsed.data });
+  },
+  setTrigger: (trigger) => {
+    const workflow = get().workflow;
+    const next = { ...workflow };
+    if (trigger === null || trigger.mode === "manual") {
+      delete next.trigger;
+    } else {
+      next.trigger = trigger;
     }
     const parsed = workflowSchema.safeParse(next);
     if (!parsed.success) {

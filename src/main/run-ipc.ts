@@ -38,68 +38,63 @@ import {
 import { workflowSchema, type Workflow } from "@shared/workflow";
 import type { EngineHost } from "./engine-host";
 import { readApiKey, readMcpHeaders } from "./secret-store";
+import type { TriggerHost } from "./triggers";
 
-export function registerRunIpc(engine: EngineHost): void {
+export async function startTriggeredRun(engine: EngineHost, workflow: Workflow): Promise<void> {
+  await executeWorkflowRun(engine, workflow);
+}
+
+export function registerRunIpc(engine: EngineHost, gate?: TriggerHost): void {
   ipcMain.handle(runStartChannel, async (_event, payload: unknown) => {
     const parsed = runStartPayloadSchema.parse(payload);
-    const apiKey = apiKeyForRun();
+    const release = claimRun(gate, parsed.workflowId);
     try {
-      const result = await engine.request({
-        type: "run.start",
-        id: randomUUID(),
-        nodeId: parsed.nodeId,
-        apiKey,
-        prompt: parsed.prompt,
-        ...(parsed.modelId ? { modelId: parsed.modelId } : {}),
-        ...(parsed.systemPrompt !== undefined ? { systemPrompt: parsed.systemPrompt } : {}),
-        ...(parsed.tools !== undefined ? { tools: parsed.tools } : {}),
-        ...(parsed.disallowedTools !== undefined ? { disallowedTools: parsed.disallowedTools } : {}),
-        ...(parsed.guardrails !== undefined ? { guardrails: parsed.guardrails } : {}),
-        ...(parsed.writePaths !== undefined ? { writePaths: parsed.writePaths } : {}),
-        ...(parsed.sandboxEnabled !== undefined ? { sandboxEnabled: parsed.sandboxEnabled } : {}),
-        ...(parsed.autoReview !== undefined ? { autoReview: parsed.autoReview } : {}),
-        ...(parsed.workspaceMode ? { workspaceMode: parsed.workspaceMode } : {}),
-        ...(parsed.repositoryPath ? { repositoryPath: parsed.repositoryPath } : {}),
-        ...(parsed.folderPath ? { folderPath: parsed.folderPath } : {}),
-        ...(parsed.workflowId ? { workflowId: parsed.workflowId } : {}),
-        ...(parsed.budgetTokens !== undefined ? { budgetTokens: parsed.budgetTokens } : {}),
-      });
-      if (result.type !== "run.done") {
-        throw new Error("Unexpected engine response");
+      const apiKey = apiKeyForRun();
+      try {
+        const result = await engine.request({
+          type: "run.start",
+          id: randomUUID(),
+          nodeId: parsed.nodeId,
+          apiKey,
+          prompt: parsed.prompt,
+          ...(parsed.modelId ? { modelId: parsed.modelId } : {}),
+          ...(parsed.systemPrompt !== undefined ? { systemPrompt: parsed.systemPrompt } : {}),
+          ...(parsed.tools !== undefined ? { tools: parsed.tools } : {}),
+          ...(parsed.disallowedTools !== undefined ? { disallowedTools: parsed.disallowedTools } : {}),
+          ...(parsed.guardrails !== undefined ? { guardrails: parsed.guardrails } : {}),
+          ...(parsed.writePaths !== undefined ? { writePaths: parsed.writePaths } : {}),
+          ...(parsed.sandboxEnabled !== undefined ? { sandboxEnabled: parsed.sandboxEnabled } : {}),
+          ...(parsed.autoReview !== undefined ? { autoReview: parsed.autoReview } : {}),
+          ...(parsed.workspaceMode ? { workspaceMode: parsed.workspaceMode } : {}),
+          ...(parsed.repositoryPath ? { repositoryPath: parsed.repositoryPath } : {}),
+          ...(parsed.folderPath ? { folderPath: parsed.folderPath } : {}),
+          ...(parsed.workflowId ? { workflowId: parsed.workflowId } : {}),
+          ...(parsed.budgetTokens !== undefined ? { budgetTokens: parsed.budgetTokens } : {}),
+        });
+        if (result.type !== "run.done") {
+          throw new Error("Unexpected engine response");
+        }
+        return runUpdateSchema.parse({
+          nodeId: result.nodeId,
+          status: result.status,
+          log: result.log,
+          ...(result.workspacePath ? { workspacePath: result.workspacePath } : {}),
+        });
+      } catch (error) {
+        throw new Error(scrub(errorText(error), apiKey), { cause: error });
       }
-      return runUpdateSchema.parse({
-        nodeId: result.nodeId,
-        status: result.status,
-        log: result.log,
-        ...(result.workspacePath ? { workspacePath: result.workspacePath } : {}),
-      });
-    } catch (error) {
-      throw new Error(scrub(errorText(error), apiKey), { cause: error });
+    } finally {
+      release();
     }
   });
 
   ipcMain.handle(workflowRunChannel, async (_event, payload: unknown) => {
     const workflow = workflowSchema.parse(payload);
-    const apiKey = apiKeyForRun();
-    const mcpHeaders = mcpHeadersFor(workflow);
+    const release = claimRun(gate, workflow.id);
     try {
-      const result = await engine.request({
-        type: "workflow.run",
-        id: randomUUID(),
-        workflow,
-        apiKey,
-        ...(mcpHeaders ? { mcpHeaders } : {}),
-      });
-      if (result.type !== "workflow.runDone") {
-        throw new Error("Unexpected engine response");
-      }
-      return workflowRunResultSchema.parse({
-        statuses: result.statuses,
-        ...(result.runStatus ? { runStatus: result.runStatus } : {}),
-        ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
-      });
-    } catch (error) {
-      throw new Error(scrubAll(errorText(error), [apiKey, ...headerValues(mcpHeaders)]), { cause: error });
+      return await executeWorkflowRun(engine, workflow);
+    } finally {
+      release();
     }
   });
 
@@ -232,28 +227,33 @@ export function registerRunIpc(engine: EngineHost): void {
 
   ipcMain.handle(workflowResumeChannel, async (_event, payload: unknown) => {
     const parsed = workflowResumePayloadSchema.parse(payload);
-    const apiKey = apiKeyForRun();
-    const mcpHeaders = mcpHeadersFor(parsed.workflow);
+    const release = claimRun(gate, parsed.workflow.id);
     try {
-      const result = await engine.request({
-        type: "workflow.resume",
-        id: randomUUID(),
-        workflow: parsed.workflow,
-        apiKey,
-        threadId: parsed.threadId,
-        ...(parsed.decision ? { decision: parsed.decision } : {}),
-        ...(mcpHeaders ? { mcpHeaders } : {}),
-      });
-      if (result.type !== "workflow.runDone") {
-        throw new Error("Unexpected engine response");
+      const apiKey = apiKeyForRun();
+      const mcpHeaders = mcpHeadersFor(parsed.workflow);
+      try {
+        const result = await engine.request({
+          type: "workflow.resume",
+          id: randomUUID(),
+          workflow: parsed.workflow,
+          apiKey,
+          threadId: parsed.threadId,
+          ...(parsed.decision ? { decision: parsed.decision } : {}),
+          ...(mcpHeaders ? { mcpHeaders } : {}),
+        });
+        if (result.type !== "workflow.runDone") {
+          throw new Error("Unexpected engine response");
+        }
+        return workflowRunResultSchema.parse({
+          statuses: result.statuses,
+          ...(result.runStatus ? { runStatus: result.runStatus } : {}),
+          ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
+        });
+      } catch (error) {
+        throw new Error(scrubAll(errorText(error), [apiKey, ...headerValues(mcpHeaders)]), { cause: error });
       }
-      return workflowRunResultSchema.parse({
-        statuses: result.statuses,
-        ...(result.runStatus ? { runStatus: result.runStatus } : {}),
-        ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
-      });
-    } catch (error) {
-      throw new Error(scrubAll(errorText(error), [apiKey, ...headerValues(mcpHeaders)]), { cause: error });
+    } finally {
+      release();
     }
   });
 
@@ -282,6 +282,42 @@ export function registerRunIpc(engine: EngineHost): void {
       throw new Error("Unexpected engine response");
     }
   });
+}
+
+function claimRun(gate: TriggerHost | undefined, workflowId: string | undefined): () => void {
+  if (!gate || !workflowId) {
+    return () => undefined;
+  }
+  if (!gate.hold(workflowId)) {
+    throw new Error("A run is already active.");
+  }
+  return () => {
+    gate.release(workflowId);
+  };
+}
+
+async function executeWorkflowRun(engine: EngineHost, workflow: Workflow) {
+  const apiKey = apiKeyForRun();
+  const mcpHeaders = mcpHeadersFor(workflow);
+  try {
+    const result = await engine.request({
+      type: "workflow.run",
+      id: randomUUID(),
+      workflow,
+      apiKey,
+      ...(mcpHeaders ? { mcpHeaders } : {}),
+    });
+    if (result.type !== "workflow.runDone") {
+      throw new Error("Unexpected engine response");
+    }
+    return workflowRunResultSchema.parse({
+      statuses: result.statuses,
+      ...(result.runStatus ? { runStatus: result.runStatus } : {}),
+      ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
+    });
+  } catch (error) {
+    throw new Error(scrubAll(errorText(error), [apiKey, ...headerValues(mcpHeaders)]), { cause: error });
+  }
 }
 
 function apiKeyForRun(): string {

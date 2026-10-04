@@ -21,7 +21,10 @@ import {
 import type { EngineHost } from "./engine-host";
 import { knownEnvSecretNames, saveNamedSecrets } from "./secret-store";
 
-export function registerWorkflowIpc(engine: EngineHost): void {
+export function registerWorkflowIpc(
+  engine: EngineHost,
+  hooks?: { onSaved?: (workflow: Workflow) => void; onDeleted?: (id: string) => void },
+): void {
   ipcMain.handle(workflowListChannel, async () => {
     const result = await engine.request({ type: "workflow.list", id: randomUUID() });
     if (result.type !== "workflow.listResult") {
@@ -51,7 +54,7 @@ export function registerWorkflowIpc(engine: EngineHost): void {
     if (!parsed.success) {
       throw new Error("Workflow is invalid");
     }
-    return saveWorkflow(engine, parsed.data);
+    return saveWorkflow(engine, parsed.data, hooks);
   });
 
   ipcMain.handle(workflowDeleteChannel, async (_event, payload: unknown) => {
@@ -67,6 +70,7 @@ export function registerWorkflowIpc(engine: EngineHost): void {
     if (result.type !== "workflow.deleteResult") {
       throw new Error("Unexpected engine response");
     }
+    hooks?.onDeleted?.(parsed.data.id);
   });
 
   ipcMain.handle(workflowExportChannel, async (_event, payload: unknown) => {
@@ -109,10 +113,12 @@ export function registerWorkflowIpc(engine: EngineHost): void {
     if (!result.summary) {
       throw new Error("Unexpected engine response");
     }
+    const workflow = workflowSchema.parse(result.workflow);
+    hooks?.onSaved?.(workflow);
     return workflowImportResultSchema.parse({
       status: "saved",
       summary: result.summary,
-      workflow: result.workflow,
+      workflow,
     });
   });
 
@@ -131,16 +137,18 @@ export function registerWorkflowIpc(engine: EngineHost): void {
       values[name] = value.trim();
     }
     saveNamedSecrets(values);
-    return saveWorkflow(engine, parsed.data.workflow);
+    return saveWorkflow(engine, parsed.data.workflow, hooks);
   });
 }
 
-async function saveWorkflow(engine: EngineHost, workflow: Workflow) {
+async function saveWorkflow(engine: EngineHost, workflow: Workflow, hooks?: { onSaved?: (workflow: Workflow) => void }) {
   const result = await engine.request({ type: "workflow.save", id: randomUUID(), workflow });
   if (result.type !== "workflow.saveResult") {
     throw new Error("Unexpected engine response");
   }
-  return workflowSummarySchema.parse(result.summary);
+  const summary = workflowSummarySchema.parse(result.summary);
+  hooks?.onSaved?.(workflow);
+  return summary;
 }
 
 function targetWindow(): BrowserWindow | undefined {

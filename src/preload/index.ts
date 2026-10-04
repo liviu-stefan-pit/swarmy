@@ -65,6 +65,15 @@ import {
   testConnectionChannel,
 } from "@shared/settings";
 import type { SwarmyApi } from "@shared/swarmy-api";
+import {
+  focusInboxChannel,
+  triggerRunChannel,
+  triggerRunEventSchema,
+  triggerSkipChannel,
+  triggerSkipSchema,
+  type TriggerRunEvent,
+  type TriggerSkip,
+} from "@shared/triggers";
 import { workflowSchema } from "@shared/workflow";
 import {
   workflowDeleteChannel,
@@ -87,6 +96,9 @@ const listeners = new Set<(status: EngineStatus) => void>();
 const runListeners = new Set<(update: RunUpdate) => void>();
 const boardListeners = new Set<(tasks: BoardTask[]) => void>();
 const plannerListeners = new Set<(workers: PlannerWorker[]) => void>();
+const focusInboxListeners = new Set<() => void>();
+const triggerRunListeners = new Set<(event: TriggerRunEvent) => void>();
+const triggerSkipListeners = new Set<(skip: TriggerSkip) => void>();
 let latest: EngineStatus = "reconnecting";
 
 function publish(status: EngineStatus): void {
@@ -120,6 +132,32 @@ ipcRenderer.on(plannerUpdateChannel, (_event: IpcRendererEvent, payload: unknown
     return;
   }
   for (const listener of plannerListeners) {
+    listener(parsed.data);
+  }
+});
+
+ipcRenderer.on(focusInboxChannel, () => {
+  for (const listener of focusInboxListeners) {
+    listener();
+  }
+});
+
+ipcRenderer.on(triggerRunChannel, (_event: IpcRendererEvent, payload: unknown) => {
+  const parsed = triggerRunEventSchema.safeParse(payload);
+  if (!parsed.success) {
+    return;
+  }
+  for (const listener of triggerRunListeners) {
+    listener(parsed.data);
+  }
+});
+
+ipcRenderer.on(triggerSkipChannel, (_event: IpcRendererEvent, payload: unknown) => {
+  const parsed = triggerSkipSchema.safeParse(payload);
+  if (!parsed.success) {
+    return;
+  }
+  for (const listener of triggerSkipListeners) {
     listener(parsed.data);
   }
 });
@@ -295,6 +333,24 @@ const swarmy: SwarmyApi = {
       plannerListeners.add(listener);
       return () => {
         plannerListeners.delete(listener);
+      };
+    },
+    onFocusInbox(listener) {
+      focusInboxListeners.add(listener);
+      return () => {
+        focusInboxListeners.delete(listener);
+      };
+    },
+    onTriggerRun(listener) {
+      triggerRunListeners.add(listener);
+      return () => {
+        triggerRunListeners.delete(listener);
+      };
+    },
+    onTriggerSkip(listener) {
+      triggerSkipListeners.add(listener);
+      return () => {
+        triggerSkipListeners.delete(listener);
       };
     },
   },

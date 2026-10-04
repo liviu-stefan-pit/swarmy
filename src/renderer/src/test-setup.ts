@@ -171,6 +171,15 @@ const swarmy: SwarmyApi = {
     onPlanner() {
       return () => undefined;
     },
+    onFocusInbox() {
+      return () => undefined;
+    },
+    onTriggerRun() {
+      return () => undefined;
+    },
+    onTriggerSkip() {
+      return () => undefined;
+    },
   },
 };
 

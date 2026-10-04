@@ -370,6 +370,86 @@ function errorText(error: unknown): string {
   return wrapped?.[1] ?? message;
 }
 
+export function watchExternalRuns(): () => void {
+  let tracking = false;
+  let seenId = useWorkflowStore.getState().workflow.id;
+  const pending: RunUpdate[] = [];
+
+  const forget = (): void => {
+    const id = useWorkflowStore.getState().workflow.id;
+    if (id === seenId) {
+      return;
+    }
+    seenId = id;
+    tracking = false;
+    pending.length = 0;
+  };
+
+  const stopWorkflow = useWorkflowStore.subscribe(() => {
+    forget();
+  });
+
+  const stopUpdate = window.swarmy.runs.onUpdate((update) => {
+    forget();
+    const workflow = useWorkflowStore.getState().workflow;
+    if (!workflow.nodes.some((node) => node.id === update.nodeId)) {
+      return;
+    }
+    if (tracking) {
+      applyUpdate(useRunStore.setState, useRunStore.getState, update);
+      return;
+    }
+    if (useRunStore.getState().workflowRunning || useRunStore.getState().activeNodeId) {
+      return;
+    }
+    pending.push(update);
+  });
+
+  const stopRun = window.swarmy.runs.onTriggerRun((event) => {
+    forget();
+    const workflow = useWorkflowStore.getState().workflow;
+    if (event.workflowId !== workflow.id) {
+      return;
+    }
+    if (event.state === "started") {
+      tracking = true;
+      if (!useRunStore.getState().workflowRunning) {
+        useRunStore.setState({
+          workflowRunning: true,
+          log: "",
+          workspacePath: null,
+          logsByNode: {},
+          approvals: [],
+          tasks: [],
+          plannerWorkers: [],
+          budgetMessage: "",
+          statusByNode: Object.fromEntries(workflow.nodes.map((node) => [node.id, "queued" as const])),
+        });
+      }
+      for (const update of pending) {
+        applyUpdate(useRunStore.setState, useRunStore.getState, update);
+      }
+      pending.length = 0;
+      return;
+    }
+    tracking = false;
+    pending.length = 0;
+    useRunStore.setState({
+      workflowRunning: false,
+      historyRevision: useRunStore.getState().historyRevision + 1,
+      ...(event.message ? { log: event.message } : {}),
+    });
+    void useRunStore.getState().refreshUnfinished(workflow.id);
+  });
+
+  return () => {
+    tracking = false;
+    stopWorkflow();
+    stopUpdate();
+    stopRun();
+  };
+}
+
 let seenWorkflowId = useWorkflowStore.getState().workflow.id;
 useWorkflowStore.subscribe((state) => {
   if (state.workflow.id === seenWorkflowId) {

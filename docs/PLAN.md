@@ -45,7 +45,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 19.5 | Review layout | [x] | phase-19.5 | 2026-10-04 |
 | 20 | Inputs and MCP | [x] | phase-20 | 2026-10-04 |
 | 21 | Templates and export | [x] | phase-21 | 2026-10-04 |
-| 22 | Triggers and notifications | [ ] | | |
+| 22 | Triggers and notifications | [x] | phase-22 | 2026-10-04 |
 | 23 | Packaging | [ ] | | |
 
 ## User Notes
@@ -1930,8 +1930,39 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Set a workflow to watch a folder. Drop a file in. The run starts.
-2. Use a workflow with an approval node. When it pauses, a Windows notification appears. Clicking it shows the inbox.
+This uses one real Cursor agent. Leave **Token budget** empty and **Required env vars** empty. You do not need `C:\prod\scratch-repo`. The agent uses a managed folder. Allow Windows notifications for Swarmy. Triggers run only while this window is open. Quitting the app stops them. There is no Windows service.
+
+1. In PowerShell, create the folder the trigger will watch:
+
+```powershell
+New-Item -ItemType Directory -Force -Path C:\prod\swarmy-watch | Out-Null
+```
+
+2. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+3. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+4. In the toolbar, click **New**. Click **Blank**. In **Name**, type `Triggers` and press Tab. Leave **Token budget** empty. Leave **Required env vars** empty.
+5. From **Nodes**, drag **Agent** and **Approval** onto the canvas.
+6. Click **Agent**. Set **Task prompt** to `Reply with exactly hello. Call submit_handoff with summary hello, files empty, and blockers empty. Do not edit files.` Leave **Workspace mode** unset.
+7. Drag the red **diff** output on **Agent** to the red **diff** input on **Approval**.
+8. In the toolbar, open **Trigger** and choose **Watch folder**. A **Folder** box appears. The line **Triggers run only while Swarmy is open.** is on the toolbar.
+9. Click the **Folder** box, paste `C:\prod\swarmy-watch`, and press Enter. Click the empty canvas. Wait two seconds so the workflow saves.
+10. Do not click **Run**. In PowerShell:
+
+```powershell
+Set-Content -Path C:\prod\swarmy-watch\first.txt -Value "first"
+```
+
+11. The **Agent** pill leaves **idle**. Wait until it reads **completed** and the **Approval** pill reads **waiting**. The **Inbox** tab under the canvas is selected and lists the approval. **Run** is disabled.
+12. In PowerShell:
+
+```powershell
+Set-Content -Path C:\prod\swarmy-watch\second.txt -Value "second"
+```
+
+The toolbar shows **Skipped second.txt: a run is already active.** The **Agent** pill stays **completed**. A second run does not start.
+13. A Windows notification titled **Swarmy** appears. If the Swarmy window is in front, Windows may hide the toast. Press `Win+N` and click the **Swarmy** notification in Notification Center. The Swarmy window comes forward. The **Inbox** tab is selected and the approval is still listed.
+14. In the inbox, click **Approve**. Wait until the **Approval** pill reads **completed** and **Run** is enabled again.
+15. Open **Trigger** and choose **Interval**. **Minutes** shows `1`. Type `0`, then click the empty canvas. **Minutes** returns to `1`. You do not have to wait for that minute. Choose **Manual** when you are done so the workflow does not start again while the window stays open.
 
 **Prompt.**
 
@@ -1946,7 +1977,11 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A workflow trigger is `manual` (the default when the field is omitted), `interval` with a whole number of minutes of at least 1, or `watch` with a directory path. The toolbar says triggers run only while Swarmy is open. Nothing registers a Windows service. The watcher and the interval timer live in the Electron main process and stop when the app quits.
+- A new file in the watched folder starts that workflow. A file in another folder does not. A second file, or a timer tick, while any run is already active is recorded as `skipped` and shown on the toolbar. The engine still runs one graph at a time, so a trigger also skips when a different workflow is the one that is running.
+- An approval interrupt (status `waiting`) produces one Windows notification. A repeat of that same waiting update does not produce another. Clicking the notification focuses the window and opens the Inbox. `app.setAppUserModelId("Swarmy")` is set so Windows will show the toast.
+- Node docs updated (decision D13): the index, `handles.md` (handles did not change), and the approval page. No new decision. Phase 23 is unchanged.
+- The manual test above is the step-by-step walkthrough. `npm run verify` exited 0.
 
 ---
 

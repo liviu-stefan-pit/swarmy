@@ -128,6 +128,18 @@ export const requiredEnvVarNameSchema = z.string().regex(/^[A-Za-z_][A-Za-z0-9_]
 
 export const requiredEnvVarsSchema = z.array(requiredEnvVarNameSchema);
 
+export const triggerSchema = z.discriminatedUnion("mode", [
+  z.strictObject({ mode: z.literal("manual") }),
+  z.strictObject({
+    mode: z.literal("interval"),
+    minutes: z.number().int().min(1),
+  }),
+  z.strictObject({
+    mode: z.literal("watch"),
+    directory: z.string().min(1),
+  }),
+]);
+
 const workflowObjectSchema = z.strictObject({
   id: z.string().min(1),
   name: z.string().min(1),
@@ -137,6 +149,7 @@ const workflowObjectSchema = z.strictObject({
   repositoryPath: z.string().min(1).optional(),
   budgetTokens: z.number().int().positive().optional(),
   requiredEnvVars: requiredEnvVarsSchema.optional(),
+  trigger: triggerSchema.optional(),
 });
 
 export const workflowSchema = z.preprocess((value) => {
@@ -168,3 +181,4 @@ export type WorkflowNode = z.infer<typeof workflowNodeSchema>;
 export type WorkflowEdge = z.infer<typeof workflowEdgeSchema>;
 export type Workflow = z.infer<typeof workflowSchema>;
 export type RequiredEnvVarName = z.infer<typeof requiredEnvVarNameSchema>;
+export type Trigger = z.infer<typeof triggerSchema>;

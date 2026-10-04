@@ -23,6 +23,7 @@ import {
   runUpdateChannel,
   runUpdateSchema,
 } from "@shared/runs";
+import { presentRunUpdate } from "./notify";
 import { ReconnectCounter } from "./reconnect-counter";
 
 const RESTART_DELAY_MS = 1000;
@@ -62,6 +63,7 @@ type EngineSuccess = Extract<EngineMessage, { type: (typeof resultByRequest)[Eng
 type EngineFailure = Extract<EngineMessage, { type: "cursor.failed" | "workflow.failed" | "run.failed" }>;
 
 export interface EngineHost {
+  ready: Promise<void>;
   bindWindow(window: BrowserWindow): void;
   request(message: EngineRequest): Promise<EngineSuccess>;
 }
@@ -77,6 +79,10 @@ export function startEngineHost(): EngineHost {
   const counter = new ReconnectCounter();
   const pending = new Map<string, Waiter>();
   let child: UtilityProcess | null = null;
+  let markReady: () => void = () => undefined;
+  const ready = new Promise<void>((resolve) => {
+    markReady = resolve;
+  });
   let quitting = false;
   let restartTimer: ReturnType<typeof setTimeout> | undefined;
 
@@ -113,6 +119,7 @@ export function startEngineHost(): EngineHost {
         const parsed = parseEngineMessage(payload);
         if (parsed.type === "engine.ready") {
           counter.connected();
+          markReady();
           broadcast(counter.connection);
           return;
         }
@@ -188,6 +195,7 @@ export function startEngineHost(): EngineHost {
   spawn();
 
   return {
+    ready,
     bindWindow(window) {
       window.webContents.on("did-finish-load", () => {
         window.webContents.send(engineStatusChannel, engineStatusSchema.parse(counter.connection));
@@ -329,6 +337,7 @@ function broadcastRunUpdate(message: Extract<EngineMessage, { type: "run.update"
     ...(message.workspacePath ? { workspacePath: message.workspacePath } : {}),
     ...(message.files && message.files.length > 0 ? { files: message.files } : {}),
   });
+  presentRunUpdate(update);
   for (const window of BrowserWindow.getAllWindows()) {
     if (!window.isDestroyed()) {
       window.webContents.send(runUpdateChannel, update);

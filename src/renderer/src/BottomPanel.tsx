@@ -24,6 +24,12 @@ export function BottomPanel() {
   const bodyHeight = displayed === undefined ? undefined : Math.max(0, displayed - fallbackChrome);
 
   useEffect(() => {
+    return window.swarmy.runs.onFocusInbox(() => {
+      usePanelLayoutStore.getState().openReview();
+    });
+  }, []);
+
+  useEffect(() => {
     const fit = () => {
       const state = usePanelLayoutStore.getState();
       const maxStored = maxBottomHeight();

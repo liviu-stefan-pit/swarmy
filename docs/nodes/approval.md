@@ -19,6 +19,8 @@ A text, file, folder, or MCP wire cannot land here. The usual line is Agent `dif
 
 Press **Run**. When the upstream agent finishes, this node pauses. The **Inbox** under the canvas lists it, and the second agent has not started. The card pill reads `waiting`.
 
+Windows shows one notification for that pause. The title is **Swarmy**. Clicking the notification brings the window forward and opens the **Inbox**. A second pause, after you approve or reject and the run waits again, can notify once more.
+
 **Approve** lets the diff continue to the next node. **Reject** needs a reason. That note is added to the upstream agent's prompt, and that agent runs again. Then the inbox asks once more. Three rejections can send the agent around again. The fourth rejection stops the branch. The approval card reads `failed`, and the error says the run stopped after 3 reject cycles.
 
 When the upstream agent changed files, the inbox item lists those files and shows a side-by-side diff. The agent's private `agent-store` folder is left out of that list and is not committed. The left side is the worktree base. The right side is what the agent wrote, and you can edit it. **Approve** writes that right-hand text into the worktree, makes a normal git commit on the agent's branch, and passes those paths to the next node. The next agent's prompt includes the text you approved. **Reject** does not write the edited buffer. The worktree file stays as the agent left it.

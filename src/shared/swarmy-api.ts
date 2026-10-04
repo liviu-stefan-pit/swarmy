@@ -16,6 +16,7 @@ import type {
 } from "./runs";
 import type { ConnectionInfo, HelloInfo } from "./settings";
 import type { McpListToolsPayload } from "./mcp";
+import type { TriggerRunEvent, TriggerSkip } from "./triggers";
 import type { Workflow } from "./workflow";
 import type { WorkflowExportResult, WorkflowImportResult, WorkflowSummary } from "./workflows";
 
@@ -64,5 +65,8 @@ export interface SwarmyApi {
     onUpdate(listener: (update: RunUpdate) => void): () => void;
     onBoard(listener: (tasks: BoardTask[]) => void): () => void;
     onPlanner(listener: (workers: PlannerWorker[]) => void): () => void;
+    onFocusInbox(listener: () => void): () => void;
+    onTriggerRun(listener: (event: TriggerRunEvent) => void): () => void;
+    onTriggerSkip(listener: (skip: TriggerSkip) => void): () => void;
   };
 }

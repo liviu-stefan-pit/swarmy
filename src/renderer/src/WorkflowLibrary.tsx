@@ -577,6 +577,177 @@ function ImportSecrets({
   );
 }
 
+function fileName(path: string): string {
+  const parts = path.split(/[/\\]/);
+  return parts[parts.length - 1] || path;
+}
+
+function cleanDirectory(value: string): string {
+  let directory = value.trim();
+  while (directory.length > 3 && /[\\/]$/.test(directory)) {
+    directory = directory.slice(0, -1);
+  }
+  return directory;
+}
+
+function TriggerControls({ busy }: { busy: boolean }) {
+  const workflowId = useWorkflowStore((state) => state.workflow.id);
+  const trigger = useWorkflowStore((state) => state.workflow.trigger);
+  const [choice, setChoice] = useState({ id: workflowId, mode: trigger?.mode ?? "manual" });
+  if (choice.id !== workflowId) {
+    setChoice({ id: workflowId, mode: trigger?.mode ?? "manual" });
+  }
+  const mode = choice.id === workflowId ? choice.mode : (trigger?.mode ?? "manual");
+  const savedMinutes = trigger?.mode === "interval" ? String(trigger.minutes) : "1";
+  const [minutesDraft, setMinutesDraft] = useState({ id: workflowId, value: savedMinutes });
+  if (minutesDraft.id !== workflowId) {
+    setMinutesDraft({ id: workflowId, value: savedMinutes });
+  }
+  const minutesValue = minutesDraft.id === workflowId ? minutesDraft.value : savedMinutes;
+  const savedDirectory = trigger?.mode === "watch" ? trigger.directory : "";
+  const [directoryDraft, setDirectoryDraft] = useState({ id: workflowId, value: savedDirectory });
+  if (directoryDraft.id !== workflowId) {
+    setDirectoryDraft({ id: workflowId, value: savedDirectory });
+  }
+  const directoryValue = directoryDraft.id === workflowId ? directoryDraft.value : savedDirectory;
+  const [skip, setSkip] = useState<{ id: string; path: string } | null>(null);
+
+  useEffect(() => {
+    return window.swarmy.runs.onTriggerSkip((event) => {
+      if (event.workflowId !== useWorkflowStore.getState().workflow.id) {
+        return;
+      }
+      setSkip({ id: event.workflowId, path: event.path });
+    });
+  }, []);
+
+  function selectMode(next: "manual" | "interval" | "watch"): void {
+    setChoice({ id: workflowId, mode: next });
+    if (next === "manual") {
+      useWorkflowStore.getState().setTrigger(null);
+      return;
+    }
+    if (next === "interval") {
+      const minutes = trigger?.mode === "interval" ? trigger.minutes : 1;
+      setMinutesDraft({ id: workflowId, value: String(minutes) });
+      useWorkflowStore.getState().setTrigger({ mode: "interval", minutes });
+      return;
+    }
+    const directory = cleanDirectory(directoryValue);
+    if (directory.length > 0) {
+      useWorkflowStore.getState().setTrigger({ mode: "watch", directory });
+      setDirectoryDraft({ id: workflowId, value: directory });
+      return;
+    }
+    if (trigger?.mode !== "watch") {
+      useWorkflowStore.getState().setTrigger(null);
+    }
+  }
+
+  function commitMinutes(): void {
+    const parsed = Number(minutesValue.trim());
+    if (!Number.isInteger(parsed) || parsed < 1) {
+      const fallback = trigger?.mode === "interval" ? String(trigger.minutes) : "1";
+      setMinutesDraft({ id: workflowId, value: fallback });
+      return;
+    }
+    useWorkflowStore.getState().setTrigger({ mode: "interval", minutes: parsed });
+    setMinutesDraft({ id: workflowId, value: String(parsed) });
+  }
+
+  function commitDirectory(): void {
+    const directory = cleanDirectory(directoryValue);
+    if (directory.length === 0) {
+      setDirectoryDraft({ id: workflowId, value: savedDirectory });
+      return;
+    }
+    useWorkflowStore.getState().setTrigger({ mode: "watch", directory });
+    setDirectoryDraft({ id: workflowId, value: directory });
+  }
+
+  const skipText =
+    skip && skip.id === workflowId
+      ? skip.path.length > 0
+        ? `Skipped ${fileName(skip.path)}: a run is already active.`
+        : "Skipped a scheduled run: a run is already active."
+      : "";
+
+  return (
+    <>
+      <label className="flex items-center gap-2 text-sm text-zinc-300">
+        Trigger
+        <select
+          data-testid="workflow-trigger"
+          aria-label="Trigger"
+          value={mode}
+          disabled={busy}
+          className="rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-50 disabled:opacity-50"
+          onChange={(event) => {
+            const next = event.target.value;
+            if (next === "manual" || next === "interval" || next === "watch") {
+              selectMode(next);
+            }
+          }}
+        >
+          <option value="manual">Manual</option>
+          <option value="interval">Interval</option>
+          <option value="watch">Watch folder</option>
+        </select>
+      </label>
+      {mode === "interval" ? (
+        <label className="flex items-center gap-2 text-sm text-zinc-300">
+          Minutes
+          <input
+            data-testid="trigger-minutes"
+            aria-label="Interval minutes"
+            value={minutesValue}
+            disabled={busy}
+            className="w-16 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-50 disabled:opacity-50"
+            onChange={(event) => {
+              setMinutesDraft({ id: workflowId, value: event.target.value });
+            }}
+            onBlur={() => {
+              commitMinutes();
+            }}
+          />
+        </label>
+      ) : null}
+      {mode === "watch" ? (
+        <label className="flex items-center gap-2 text-sm text-zinc-300">
+          Folder
+          <input
+            data-testid="trigger-directory"
+            aria-label="Watch folder"
+            value={directoryValue}
+            placeholder="Paste a folder path"
+            disabled={busy}
+            className="w-56 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-50 disabled:opacity-50"
+            onChange={(event) => {
+              setDirectoryDraft({ id: workflowId, value: event.target.value });
+            }}
+            onBlur={() => {
+              commitDirectory();
+            }}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                commitDirectory();
+              }
+            }}
+          />
+        </label>
+      ) : null}
+      <p data-testid="trigger-while-open" className="text-xs text-zinc-400">
+        Triggers run only while Swarmy is open.
+      </p>
+      {skipText ? (
+        <p data-testid="trigger-skipped" className="text-sm text-amber-200">
+          {skipText}
+        </p>
+      ) : null}
+    </>
+  );
+}
+
 function WorkflowToolbar({
   summaries,
   busy,
@@ -735,6 +906,7 @@ function WorkflowToolbar({
           }}
         />
       </label>
+      <TriggerControls busy={busy} />
       <RunWorkflowButton />
       <button
         type="button"

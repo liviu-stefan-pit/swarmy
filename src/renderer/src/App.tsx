@@ -3,6 +3,7 @@ import { appInfo } from "@shared/app-info";
 import type { EngineStatus } from "@shared/protocol";
 import type { ConnectionInfo, HelloInfo } from "@shared/settings";
 import { BottomPanel } from "./BottomPanel";
+import { watchExternalRuns } from "./run-store";
 import { SettingsForm } from "./SettingsForm";
 import { WorkflowEditor } from "./WorkflowCanvas";
 
@@ -38,6 +39,8 @@ export function App() {
   useEffect(() => {
     return window.swarmy.engine.onStatus(setStatus);
   }, []);
+
+  useEffect(() => watchExternalRuns(), []);
 
   useEffect(() => {
     let cancelled = false;

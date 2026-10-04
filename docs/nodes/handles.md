@@ -18,6 +18,8 @@ Phase 20 does not change this table. Text, file, folder, and MCP are still sourc
 
 Phase 21 does not change this table. A template is a saved graph of these same nodes. Export and import move that graph. They do not add a handle.
 
+Phase 22 does not change this table. A trigger is a setting on the workflow: manual, an interval of at least one minute, or a folder to watch. It is not a node and it is not a handle. Triggers run only while Swarmy is open.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |
