@@ -15,12 +15,21 @@ import type {
   WorkflowRunResult,
 } from "./runs";
 import type { ConnectionInfo, HelloInfo } from "./settings";
+import type { McpListToolsPayload } from "./mcp";
 import type { Workflow } from "./workflow";
 import type { WorkflowSummary } from "./workflows";
 
 export interface SwarmyApi {
   engine: {
     onStatus(listener: (status: EngineStatus) => void): () => void;
+  };
+  files: {
+    pathForFile(file: File): string;
+  };
+  mcp: {
+    saveHeaders(headers: Record<string, string>, secretId?: string): Promise<string>;
+    readHeaders(secretId: string): Promise<Record<string, string>>;
+    listTools(request: McpListToolsPayload): Promise<string[]>;
   };
   settings: {
     saveKey(apiKey: string): Promise<void>;

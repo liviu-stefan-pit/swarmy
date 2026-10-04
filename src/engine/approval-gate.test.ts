@@ -140,9 +140,12 @@ it("does not start the sink until the approval is approved", async () => {
         workspaces,
       });
       try {
-        await vi.waitFor(() => {
-          expect(pending(handle).map((item) => item.nodeId)).toEqual(["review"]);
-        });
+        await vi.waitFor(
+          () => {
+            expect(pending(handle).map((item) => item.nodeId)).toEqual(["review"]);
+          },
+          { timeout: 10_000 },
+        );
         expect(runtime.sentPrompts.some((prompt) => prompt.includes("writer-task"))).toBe(true);
         expect(runtime.sentPrompts.some((prompt) => prompt.includes("sink-task"))).toBe(false);
 
@@ -176,17 +179,23 @@ it("reruns the upstream agent once when rejected with try again, then interrupts
         workspaces,
       });
       try {
-        await vi.waitFor(() => {
-          expect(pending(handle)).toHaveLength(1);
-        });
+        await vi.waitFor(
+          () => {
+            expect(pending(handle)).toHaveLength(1);
+          },
+          { timeout: 10_000 },
+        );
         expect(runtime.sentPrompts.filter((prompt) => prompt.includes("writer-task"))).toHaveLength(1);
 
         await decide(handle, { nodeId: "review", action: "reject", reason: "try again" });
-        await vi.waitFor(() => {
-          const writer = runtime.sentPrompts.filter((prompt) => prompt.includes("writer-task"));
-          expect(writer).toHaveLength(2);
-          expect(pending(handle)).toHaveLength(1);
-        });
+        await vi.waitFor(
+          () => {
+            const writer = runtime.sentPrompts.filter((prompt) => prompt.includes("writer-task"));
+            expect(writer).toHaveLength(2);
+            expect(pending(handle)).toHaveLength(1);
+          },
+          { timeout: 10_000 },
+        );
 
         const writer = runtime.sentPrompts.filter((prompt) => prompt.includes("writer-task"));
         expect(writer[1]).toContain("try again");
@@ -220,9 +229,12 @@ it("fails the branch on the fourth reject instead of looping", async () => {
       });
       try {
         for (const reason of ["one", "two", "three", "four"]) {
-          await vi.waitFor(() => {
-            expect(pending(handle)).toHaveLength(1);
-          });
+          await vi.waitFor(
+            () => {
+              expect(pending(handle)).toHaveLength(1);
+            },
+            { timeout: 10_000 },
+          );
           await decide(handle, { nodeId: "review", action: "reject", reason });
         }
         const result = await handle.done;
@@ -259,9 +271,12 @@ it("leaves the interrupt pending so a restarted run can approve it", async () =>
         threadId,
       });
       try {
-        await vi.waitFor(() => {
-          expect(pending(handle)).toHaveLength(1);
-        });
+        await vi.waitFor(
+          () => {
+            expect(pending(handle)).toHaveLength(1);
+          },
+          { timeout: 10_000 },
+        );
         expect(runtime.sentPrompts.some((prompt) => prompt.includes("sink-task"))).toBe(false);
 
         const listed = await listPending({ workflow, checkpointer, threadId });

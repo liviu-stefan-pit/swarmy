@@ -10,9 +10,11 @@ Drag **File** onto the canvas. The card has one output, **File**, in amber, and 
 
 That output connects only to an [Agent](agent.md) `file` input. Planner, Approval, and Merge have no file input, so a wire to them is refused.
 
-## Later
+## The dropped file
 
-Phase 20 copies a dropped file into the run and gives the agent a path plus an excerpt of at most 20 KB. Until then the card is only a labeled source in the graph.
+Drop one file onto the card, or choose it in the inspector. The card shows the file name. The workflow stores the path, not the file bytes.
+
+When you press **Run** in the toolbar, Swarmy copies that file into the run's input directory and gives the downstream agent the copied path plus an excerpt of at most 20 KB. The rest of the file stays on disk at that path. A second file node can feed the same agent. Each file is excerpted on its own.
 
 ## Schema
 
@@ -21,7 +23,7 @@ Phase 20 copies a dropped file into the run and gives the agent a path plus an e
   "id": "spec",
   "type": "fileInput",
   "position": { "x": 0, "y": 0 },
-  "data": { "label": "File" }
+  "data": { "label": "File", "sourcePath": "C:\\notes\\brief.txt" }
 }
 ```
 

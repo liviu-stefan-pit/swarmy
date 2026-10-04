@@ -22,9 +22,10 @@ import {
   type PendingApproval,
   type PlannerWorker,
 } from "@shared/runs";
-import type { Workflow, WorkflowNode } from "@shared/workflow";
+import type { McpNodeData, Workflow, WorkflowNode } from "@shared/workflow";
 import { validateWorkflow } from "@shared/validate-workflow";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
+import { stageDroppedFile } from "./inputs";
 import type { TaskBoard } from "./task-board";
 import { openRunCatalog, type RunCatalog } from "./run-catalog";
 import type { AgentRuntime, RuntimeCustomTool, RuntimeMcpServer, SteerAck } from "./runtime";
@@ -99,6 +100,7 @@ export interface Handoff {
   files: string[];
   blockers: string[];
   texts?: Record<string, string>;
+  excerpts?: { path: string; text: string }[];
 }
 
 export interface NodeSnapshot {
@@ -183,6 +185,7 @@ export interface WorkflowRunInput {
   taskBoard?: TaskBoard;
   onBoard?: (tasks: BoardTask[]) => void;
   onPlanner?: (workers: PlannerWorker[]) => void;
+  mcpHeaders?: Record<string, Record<string, string>>;
 }
 
 export interface WorkflowRunHandle {
@@ -294,6 +297,7 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
       ...(input.onUpdate ? { onUpdate: input.onUpdate } : {}),
       ...(input.taskBoard ? { taskBoard: input.taskBoard } : {}),
       ...(input.onBoard ? { onBoard: input.onBoard } : {}),
+      ...(input.mcpHeaders ? { mcpHeaders: input.mcpHeaders } : {}),
       noteWorker(worker) {
         const index = plannerWorkers.findIndex(
           (item) => item.plannerId === worker.plannerId && item.taskId === worker.taskId,
@@ -681,6 +685,7 @@ interface RunContext {
   markBudgetExceeded: () => Promise<void>;
   noteTokens: (tokens: number | undefined) => void;
   spentTokens: () => number;
+  mcpHeaders?: Record<string, Record<string, string>>;
 }
 
 type NodeUpdate = Partial<GraphValues>;
@@ -729,16 +734,13 @@ async function executeNode(
     return executeMerge(input, workflow, node, parents, state);
   }
 
-  if (node.type !== "agent") {
-    const handoff: Handoff = {
-      kind: "unstructured",
-      summary: node.data.label,
-      files: [],
-      blockers: [],
-    };
-    input.onUpdate?.({ nodeId: node.id, status: "running", log: "" });
-    input.onUpdate?.({ nodeId: node.id, status: "completed", log: handoff.summary });
-    return { snapshots: { [node.id]: { status: "completed", handoff } } };
+  if (
+    node.type === "fileInput" ||
+    node.type === "textInput" ||
+    node.type === "folderInput" ||
+    node.type === "mcp"
+  ) {
+    return executeSource(input, node);
   }
 
   return executeAgent(input, workflow, node, state);
@@ -940,15 +942,22 @@ async function executeAgent(
   report("running", "");
   let workspace: AgentWorkspace | undefined;
   try {
-    const mode = node.data.workspaceMode ?? "managed";
-    workspace =
-      reuseUpstreamWorkspace(input, workflow, node, state) ??
-      (await input.workspaces.provision({
-        id: workspaceId(input.threadId, node.id),
-        mode,
-        ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
-        ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
-      }));
+    const forcedFolder = folderPathFromInputs(workflow, node.id);
+    const mode = forcedFolder ? "folder" : (node.data.workspaceMode ?? "managed");
+    const folderPath = forcedFolder ?? node.data.folderPath;
+    workspace = forcedFolder
+      ? await input.workspaces.provision({
+          id: workspaceId(input.threadId, node.id),
+          mode: "folder",
+          folderPath: forcedFolder,
+        })
+      : (reuseUpstreamWorkspace(input, workflow, node, state) ??
+        (await input.workspaces.provision({
+          id: workspaceId(input.threadId, node.id),
+          mode,
+          ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
+          ...(folderPath ? { folderPath } : {}),
+        })));
     const workspacePath = workspace.path;
     let captured: Handoff | undefined;
     const submitHandoff: RuntimeCustomTool = {
@@ -989,7 +998,7 @@ async function executeAgent(
         cwd: workspacePath,
         prompt,
         customTools: { submit_handoff: submitHandoff, ...boardTools },
-        mcpServers: emptyMcpServers,
+        mcpServers: mcpServersFor(workflow, node.id, input.mcpHeaders),
         ...(node.data.modelId ? { modelId: node.data.modelId } : {}),
         ...(node.data.systemPrompt !== undefined ? { systemPrompt: node.data.systemPrompt } : {}),
         ...(node.data.tools !== undefined ? { tools: node.data.tools } : {}),
@@ -1591,6 +1600,11 @@ function agentPrompt(task: string, upstream: readonly Handoff[], feedback: strin
         lines.push(path, text);
       }
     }
+    if (handoff.excerpts) {
+      for (const excerpt of handoff.excerpts) {
+        lines.push(`File: ${excerpt.path}`, excerpt.text);
+      }
+    }
   }
   if (feedback.trim().length > 0) {
     lines.push(`The approval was rejected: ${feedback.trim()}`);
@@ -1612,6 +1626,109 @@ function combinedHandoff(upstream: readonly NodeSnapshot[], summary: string): Ha
     summary,
     files: upstream.flatMap((snapshot) => snapshot.handoff.files),
     blockers: upstream.flatMap((snapshot) => snapshot.handoff.blockers),
+  };
+}
+
+async function executeSource(input: RunContext, node: WorkflowNode): Promise<NodeUpdate> {
+  if (node.type === "fileInput") {
+    return executeFileInput(input, node);
+  }
+  const summary = sourceSummary(node);
+  const handoff: Handoff = { kind: "unstructured", summary, files: [], blockers: [] };
+  input.onUpdate?.({ nodeId: node.id, status: "running", log: "" });
+  input.onUpdate?.({ nodeId: node.id, status: "completed", log: summary });
+  return { snapshots: { [node.id]: { status: "completed", handoff } } };
+}
+
+async function executeFileInput(
+  input: RunContext,
+  node: Extract<WorkflowNode, { type: "fileInput" }>,
+): Promise<NodeUpdate> {
+  const sourcePath = node.data.sourcePath?.trim();
+  input.onUpdate?.({ nodeId: node.id, status: "running", log: "" });
+  if (!sourcePath) {
+    const handoff: Handoff = { kind: "unstructured", summary: node.data.label, files: [], blockers: [] };
+    input.onUpdate?.({ nodeId: node.id, status: "completed", log: handoff.summary });
+    return { snapshots: { [node.id]: { status: "completed", handoff } } };
+  }
+  try {
+    const directory = await input.workspaces.inputDir(input.threadId);
+    const staged = await stageDroppedFile(sourcePath, directory, node.id);
+    const handoff: Handoff = {
+      kind: "unstructured",
+      summary: staged.path,
+      files: [staged.path],
+      blockers: [],
+      excerpts: [{ path: staged.path, text: staged.excerpt }],
+    };
+    input.onUpdate?.({ nodeId: node.id, status: "completed", log: staged.path });
+    return { snapshots: { [node.id]: { status: "completed", handoff } } };
+  } catch (error) {
+    const message = error instanceof Error && error.message ? error.message : "The file could not be copied";
+    return failedNode(input, node.id, message);
+  }
+}
+
+function sourceSummary(node: WorkflowNode): string {
+  if (node.type === "textInput") {
+    const text = node.data.text?.trim();
+    return text && text.length > 0 ? text : node.data.label;
+  }
+  if (node.type === "folderInput") {
+    return node.data.folderPath?.trim() || node.data.label;
+  }
+  return node.data.label;
+}
+
+function parentNodes(workflow: Workflow, nodeId: string): WorkflowNode[] {
+  const ids = predecessors(workflow).get(nodeId) ?? [];
+  return ids.flatMap((id) => {
+    const node = workflow.nodes.find((item) => item.id === id);
+    return node ? [node] : [];
+  });
+}
+
+function folderPathFromInputs(workflow: Workflow, nodeId: string): string | undefined {
+  for (const parent of parentNodes(workflow, nodeId)) {
+    if (parent.type === "folderInput" && parent.data.folderPath) {
+      return parent.data.folderPath;
+    }
+  }
+  return undefined;
+}
+
+function mcpServersFor(
+  workflow: Workflow,
+  nodeId: string,
+  headersBySecret: Record<string, Record<string, string>> | undefined,
+): Record<string, RuntimeMcpServer> {
+  const servers: Record<string, RuntimeMcpServer> = {};
+  for (const parent of parentNodes(workflow, nodeId)) {
+    if (parent.type !== "mcp") continue;
+    const server = runtimeMcpServer(parent.data, headersBySecret);
+    if (server) {
+      servers[parent.data.label] = server;
+    }
+  }
+  return servers;
+}
+
+function runtimeMcpServer(
+  data: McpNodeData,
+  headersBySecret: Record<string, Record<string, string>> | undefined,
+): RuntimeMcpServer | undefined {
+  if (data.transport === "http") {
+    if (!data.url) return undefined;
+    const headers = data.headerSecretId ? headersBySecret?.[data.headerSecretId] : undefined;
+    return {
+      url: data.url,
+      ...(headers && Object.keys(headers).length > 0 ? { headers } : {}),
+    };
+  }
+  if (!data.command) return undefined;
+  return {
+    command: data.command,
+    ...(data.args && data.args.length > 0 ? { args: data.args } : {}),
   };
 }
 
@@ -2002,6 +2119,9 @@ function idleContext(threadId: string): RunContext {
       },
       trackChild() {
         return undefined;
+      },
+      inputDir() {
+        return Promise.reject(new Error("Listing approvals does not run agents"));
       },
     },
     threadId,

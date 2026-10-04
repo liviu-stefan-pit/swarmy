@@ -24,6 +24,7 @@ export interface WorkspaceManager {
   locate(request: WorkspaceProvision): Promise<AgentWorkspace | null>;
   teardown(workspace: AgentWorkspace): Promise<void>;
   trackChild(workspaceId: string, pid: number): void;
+  inputDir(runId: string): Promise<string>;
 }
 
 const teardownDelaysMs = [50, 150, 500, 2000];
@@ -56,6 +57,13 @@ class NodeWorkspaceManager implements WorkspaceManager {
 
   trackChild(workspaceId: string, pid: number): void {
     this.pids(workspaceId).add(pid);
+  }
+
+  async inputDir(runId: string): Promise<string> {
+    assertWorkspaceId(runId);
+    const path = join(this.rootDir, "inputs", runId);
+    await mkdir(path, { recursive: true });
+    return path;
   }
 
   async provision(request: WorkspaceProvision): Promise<AgentWorkspace> {

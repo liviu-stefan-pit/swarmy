@@ -10,9 +10,11 @@ Drag **Folder** onto the canvas. The card has one output, **Folder**, in green, 
 
 That output connects only to an [Agent](agent.md) `folder` input.
 
-## Later
+## The folder
 
-Phase 20 uses this node to set the agent's workspace to folder mode and point it at the chosen directory. Workspace creation itself is Phase 9. Until then the card is only a labeled source in the graph.
+Select the card. The inspector has **Folder** (`inspector-folder-path`). Type the directory the agent should use.
+
+When this output is wired to an agent, that agent runs in `folder` mode at this path, even if the agent card has another workspace mode. The folder stays where it is. Swarmy does not delete it.
 
 ## Schema
 
@@ -21,7 +23,7 @@ Phase 20 uses this node to set the agent's workspace to folder mode and point it
   "id": "workspace",
   "type": "folderInput",
   "position": { "x": 0, "y": 0 },
-  "data": { "label": "Folder" }
+  "data": { "label": "Folder", "folderPath": "C:\\work\\notes" }
 }
 ```
 

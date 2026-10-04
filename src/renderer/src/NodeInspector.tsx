@@ -1,11 +1,19 @@
+import { useEffect, useState } from "react";
 import { getNodeType } from "@shared/node-registry";
 import {
+  mcpTransportSchema,
   workspaceModeSchema,
   type AgentNodeData,
+  type FileInputNodeData,
+  type FolderInputNodeData,
+  type McpNodeData,
   type MergeNodeData,
   type PlannerNodeData,
+  type TextInputNodeData,
   type WorkflowNode,
 } from "@shared/workflow";
+import { useMcpToolsStore } from "./mcp-tools-store";
+import type { NodePatch } from "./workflow-store";
 import { CollapseControl, IconRail, InspectorIcon, ResizeEdge } from "./PanelChrome";
 import { usePanelLayoutStore } from "./panel-layout-store";
 import { useWorkflowStore } from "./workflow-store";
@@ -91,7 +99,7 @@ export function NodeInspector() {
   );
 }
 
-type InspectorPatch = Partial<AgentNodeData> & { targetBranch?: string };
+type InspectorPatch = NodePatch;
 
 function NodeFields({
   node,
@@ -120,6 +128,10 @@ function NodeFields({
       {node.type === "agent" ? <AgentFields data={node.data} onChange={onChange} /> : null}
       {node.type === "planner" ? <PlannerFields data={node.data} onChange={onChange} /> : null}
       {node.type === "merge" ? <MergeFields data={node.data} onChange={onChange} /> : null}
+      {node.type === "textInput" ? <TextFields data={node.data} onChange={onChange} /> : null}
+      {node.type === "fileInput" ? <FileFields data={node.data} onChange={onChange} /> : null}
+      {node.type === "folderInput" ? <FolderFields data={node.data} onChange={onChange} /> : null}
+      {node.type === "mcp" ? <McpFields nodeId={node.id} data={node.data} onChange={onChange} /> : null}
     </div>
   );
 }
@@ -413,6 +425,296 @@ function WorkflowRepositoryField() {
     </label>
   );
 }
+
+function TextFields({
+  data,
+  onChange,
+}: {
+  data: TextInputNodeData;
+  onChange: (patch: InspectorPatch) => void;
+}) {
+  return (
+    <label className="block space-y-1 text-xs text-zinc-400">
+      <span>Text</span>
+      <textarea
+        data-testid="inspector-text"
+        className={`${fieldClass} min-h-24`}
+        value={data.text ?? ""}
+        placeholder="The brief downstream nodes should read"
+        onChange={(event) => {
+          onChange({ text: event.target.value });
+        }}
+      />
+    </label>
+  );
+}
+
+function FileFields({
+  data,
+  onChange,
+}: {
+  data: FileInputNodeData;
+  onChange: (patch: InspectorPatch) => void;
+}) {
+  return (
+    <div className="space-y-2">
+      <p className="text-xs text-zinc-500" data-testid="inspector-file-path">
+        {data.sourcePath ?? "No file yet. Drop one on the card, or choose a file."}
+      </p>
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span>File</span>
+        <input
+          data-testid="inspector-file"
+          className="block w-full text-xs text-zinc-300"
+          type="file"
+          onChange={(event) => {
+            const file = event.target.files?.item(0);
+            if (!file) return;
+            const sourcePath = window.swarmy.files.pathForFile(file);
+            if (!sourcePath) return;
+            onChange({ sourcePath });
+          }}
+        />
+      </label>
+    </div>
+  );
+}
+
+function FolderFields({
+  data,
+  onChange,
+}: {
+  data: FolderInputNodeData;
+  onChange: (patch: InspectorPatch) => void;
+}) {
+  return (
+    <label className="block space-y-1 text-xs text-zinc-400">
+      <span>Folder</span>
+      <input
+        data-testid="inspector-folder-path"
+        className={fieldClass}
+        value={data.folderPath ?? ""}
+        placeholder="Folder path"
+        onChange={(event) => {
+          const folderPath = event.target.value.trim();
+          onChange({ folderPath: folderPath.length > 0 ? folderPath : undefined });
+        }}
+      />
+      <span className="block text-zinc-500">A connected agent uses this folder as its workspace.</span>
+    </label>
+  );
+}
+
+const emptyMcpTools: readonly string[] = [];
+
+function McpFields({
+  nodeId,
+  data,
+  onChange,
+}: {
+  nodeId: string;
+  data: McpNodeData;
+  onChange: (patch: InspectorPatch) => void;
+}) {
+  const tools = useMcpToolsStore((state) => state.byNodeId[nodeId]) ?? emptyMcpTools;
+  const setTools = useMcpToolsStore((state) => state.setTools);
+  const [rows, setRows] = useState<HeaderRow[]>([{ id: "header-1", name: "", value: "" }]);
+  const [status, setStatus] = useState("");
+
+  useEffect(() => {
+    const secretId = data.headerSecretId;
+    if (!secretId) return;
+    let cancelled = false;
+    void window.swarmy.mcp.readHeaders(secretId).then(
+      (headers) => {
+        if (cancelled) return;
+        const next = Object.entries(headers).map(([name, value], index) => ({
+          id: `header-${index + 1}`,
+          name,
+          value,
+        }));
+        if (next.length > 0) setRows(next);
+      },
+      () => undefined,
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [data.headerSecretId]);
+
+  return (
+    <div className="space-y-3">
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span>Transport</span>
+        <select
+          data-testid="inspector-mcp-transport"
+          className={fieldClass}
+          value={data.transport}
+          onChange={(event) => {
+            const parsed = mcpTransportSchema.safeParse(event.target.value);
+            if (!parsed.success) return;
+            onChange({ transport: parsed.data });
+          }}
+        >
+          <option value="stdio">stdio</option>
+          <option value="http">http</option>
+        </select>
+      </label>
+      {data.transport === "http" ? (
+        <label className="block space-y-1 text-xs text-zinc-400">
+          <span>URL</span>
+          <input
+            data-testid="inspector-mcp-url"
+            className={fieldClass}
+            value={data.url ?? ""}
+            placeholder="http://127.0.0.1:3000/mcp"
+            onChange={(event) => {
+              const url = event.target.value.trim();
+              onChange({ url: url.length > 0 ? url : undefined });
+            }}
+          />
+        </label>
+      ) : (
+        <>
+          <label className="block space-y-1 text-xs text-zinc-400">
+            <span>Command</span>
+            <input
+              data-testid="inspector-mcp-command"
+              className={fieldClass}
+              value={data.command ?? ""}
+              placeholder="node"
+              onChange={(event) => {
+                const command = event.target.value.trim();
+                onChange({ command: command.length > 0 ? command : undefined });
+              }}
+            />
+          </label>
+          <label className="block space-y-1 text-xs text-zinc-400">
+            <span>Arguments</span>
+            <textarea
+              data-testid="inspector-mcp-args"
+              className={`${fieldClass} min-h-16`}
+              value={(data.args ?? []).join("\n")}
+              placeholder="One argument per line"
+              onChange={(event) => {
+                onChange({ args: toolList(event.target.value) });
+              }}
+            />
+          </label>
+        </>
+      )}
+      <div className="space-y-2">
+        <p className="text-xs text-zinc-400">Headers</p>
+        {rows.map((row) => (
+          <div key={row.id} className="grid grid-cols-2 gap-2">
+            <input
+              data-testid="inspector-mcp-header-name"
+              className={fieldClass}
+              value={row.name}
+              placeholder="Name"
+              onChange={(event) => {
+                setRows((current) =>
+                  current.map((item) => (item.id === row.id ? { ...item, name: event.target.value } : item)),
+                );
+              }}
+            />
+            <input
+              data-testid="inspector-mcp-header-value"
+              className={fieldClass}
+              type="password"
+              value={row.value}
+              placeholder="Value"
+              onChange={(event) => {
+                setRows((current) =>
+                  current.map((item) => (item.id === row.id ? { ...item, value: event.target.value } : item)),
+                );
+              }}
+            />
+          </div>
+        ))}
+        <button
+          type="button"
+          className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+          onClick={() => {
+            setRows((current) => [...current, { id: `header-${current.length + 1}`, name: "", value: "" }]);
+          }}
+        >
+          Add header
+        </button>
+        <button
+          type="button"
+          data-testid="inspector-mcp-save-headers"
+          className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+          onClick={() => {
+            const headers: Record<string, string> = {};
+            for (const row of rows) {
+              const name = row.name.trim();
+              if (name.length === 0 || row.value.length === 0) continue;
+              headers[name] = row.value;
+            }
+            if (Object.keys(headers).length === 0) {
+              setStatus("Enter a header name and value.");
+              return;
+            }
+            void window.swarmy.mcp.saveHeaders(headers, data.headerSecretId).then(
+              (secretId) => {
+                onChange({ headerSecretId: secretId });
+                setStatus("Headers saved on this PC.");
+              },
+              () => {
+                setStatus("Headers could not be saved.");
+              },
+            );
+          }}
+        >
+          Save headers
+        </button>
+        <p className="text-xs text-zinc-500">Header values stay on this PC. The workflow keeps only an id.</p>
+      </div>
+      <button
+        type="button"
+        data-testid="inspector-mcp-test"
+        className="rounded border border-zinc-600 px-2 py-1 text-xs text-zinc-200 hover:bg-zinc-800"
+        onClick={() => {
+          setStatus("Testing connection…");
+          void window.swarmy.mcp
+            .listTools({
+              transport: data.transport,
+              ...(data.command ? { command: data.command } : {}),
+              ...(data.args ? { args: data.args } : {}),
+              ...(data.url ? { url: data.url } : {}),
+              ...(data.headerSecretId ? { headerSecretId: data.headerSecretId } : {}),
+            })
+            .then(
+              (names) => {
+                setTools(nodeId, names);
+                setStatus(names.length > 0 ? "Connection ok." : "The server listed no tools.");
+              },
+              (error: unknown) => {
+                setStatus(error instanceof Error && error.message ? error.message : "The connection failed.");
+              },
+            );
+        }}
+      >
+        Test connection
+      </button>
+      {status.length > 0 ? (
+        <p className="text-xs text-zinc-300" data-testid="mcp-test-status">
+          {status}
+        </p>
+      ) : null}
+      {tools.length > 0 ? (
+        <ul data-testid="mcp-inspector-tools" className="space-y-1 text-sm text-zinc-200">
+          {tools.map((name) => (
+            <li key={name}>{name}</li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
+  );
+}
+
+type HeaderRow = { id: string; name: string; value: string };
 
 function ToggleField({
   label,

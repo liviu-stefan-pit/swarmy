@@ -12,6 +12,7 @@ import {
   runRecordStatusSchema,
   runUpdateSchema,
 } from "./runs";
+import { mcpHeadersBySecretSchema } from "./mcp";
 import { workflowSchema, workspaceModeSchema } from "./workflow";
 import { workflowSummarySchema } from "./workflows";
 
@@ -205,6 +206,7 @@ export const workflowRunMessageSchema = z.object({
   id: z.string().min(1),
   workflow: workflowSchema,
   apiKey: z.string().min(1),
+  mcpHeaders: mcpHeadersBySecretSchema.optional(),
 });
 
 export const workflowRunDoneMessageSchema = z.object({
@@ -308,6 +310,7 @@ export const workflowResumeMessageSchema = z.object({
   apiKey: z.string().min(1),
   threadId: z.string().min(1),
   decision: approvalDecisionSchema.optional(),
+  mcpHeaders: mcpHeadersBySecretSchema.optional(),
 });
 
 export const approvalListMessageSchema = z.object({

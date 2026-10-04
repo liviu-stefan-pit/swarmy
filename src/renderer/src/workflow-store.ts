@@ -3,11 +3,16 @@ import { getNodeType } from "@shared/node-registry";
 import { connectError, type WorkflowConnection } from "@shared/validate-workflow";
 import {
   agentNodeDataSchema,
+  fileInputDataSchema,
+  folderInputDataSchema,
+  mcpNodeDataSchema,
   mergeNodeDataSchema,
   plannerNodeDataSchema,
+  textInputDataSchema,
   workflowNodeSchema,
   workflowSchema,
   type AgentNodeData,
+  type McpTransport,
   type PlannerNodeData,
   type Position,
   type Viewport,
@@ -32,7 +37,8 @@ type WorkflowState = {
   connect: (connection: WorkflowConnection) => void;
   moveNode: (id: string, position: Position) => void;
   selectNode: (id: string | null) => void;
-  updateSelectedNode: (patch: Partial<AgentNodeData>) => void;
+  updateNode: (id: string, patch: NodePatch) => void;
+  updateSelectedNode: (patch: NodePatch) => void;
   setViewport: (viewport: Viewport) => void;
   replaceWorkflow: (workflow: Workflow) => void;
   renameWorkflow: (name: string) => void;
@@ -137,11 +143,9 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   selectNode: (id) => {
     set({ selectedNodeId: id });
   },
-  updateSelectedNode: (patch) => {
-    const { workflow, selectedNodeId } = get();
-    if (!selectedNodeId) return;
-
-    const current = workflow.nodes.find((node) => node.id === selectedNodeId);
+  updateNode: (id, patch) => {
+    const workflow = get().workflow;
+    const current = workflow.nodes.find((node) => node.id === id);
     if (!current) return;
 
     const nextNode = withNodePatch(current, patch);
@@ -152,6 +156,11 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
     if (!parsed.success) return;
 
     set({ workflow: parsed.data });
+  },
+  updateSelectedNode: (patch) => {
+    const selectedNodeId = get().selectedNodeId;
+    if (!selectedNodeId) return;
+    get().updateNode(selectedNodeId, patch);
   },
   setViewport: (viewport) => {
     const workflow = get().workflow;
@@ -200,7 +209,16 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 }));
 
-type NodePatch = Partial<AgentNodeData> & { targetBranch?: string };
+export type NodePatch = Partial<AgentNodeData> & {
+  targetBranch?: string;
+  text?: string;
+  sourcePath?: string;
+  transport?: McpTransport;
+  command?: string;
+  args?: string[];
+  url?: string;
+  headerSecretId?: string;
+};
 
 function withNodePatch(node: WorkflowNode, patch: NodePatch): WorkflowNode {
   if (node.type === "merge") {
@@ -228,6 +246,43 @@ function withNodePatch(node: WorkflowNode, patch: NodePatch): WorkflowNode {
     const folderPath = Object.hasOwn(patch, "folderPath") ? patch.folderPath : node.data.folderPath;
     if (folderPath) next.folderPath = folderPath;
     return { ...node, data: plannerNodeDataSchema.parse(next) };
+  }
+
+  if (node.type === "textInput") {
+    const text = Object.hasOwn(patch, "text") ? patch.text : node.data.text;
+    return {
+      ...node,
+      data: textInputDataSchema.parse({
+        label: patch.label ?? node.data.label,
+        ...(text !== undefined ? { text } : {}),
+      }),
+    };
+  }
+
+  if (node.type === "fileInput") {
+    const sourcePath = Object.hasOwn(patch, "sourcePath") ? patch.sourcePath : node.data.sourcePath;
+    return {
+      ...node,
+      data: fileInputDataSchema.parse({
+        label: patch.label ?? node.data.label,
+        ...(sourcePath ? { sourcePath } : {}),
+      }),
+    };
+  }
+
+  if (node.type === "folderInput") {
+    const folderPath = Object.hasOwn(patch, "folderPath") ? patch.folderPath : node.data.folderPath;
+    return {
+      ...node,
+      data: folderInputDataSchema.parse({
+        label: patch.label ?? node.data.label,
+        ...(folderPath ? { folderPath } : {}),
+      }),
+    };
+  }
+
+  if (node.type === "mcp") {
+    return { ...node, data: mcpData(node.data, patch) };
   }
 
   if (node.type !== "agent") {
@@ -265,4 +320,23 @@ function withNodePatch(node: WorkflowNode, patch: NodePatch): WorkflowNode {
   if (folderPath) next.folderPath = folderPath;
 
   return { ...node, data: agentNodeDataSchema.parse(next) };
+}
+
+function mcpData(
+  data: Extract<WorkflowNode, { type: "mcp" }>["data"],
+  patch: NodePatch,
+): Extract<WorkflowNode, { type: "mcp" }>["data"] {
+  const transport = Object.hasOwn(patch, "transport") ? patch.transport : data.transport;
+  const command = Object.hasOwn(patch, "command") ? patch.command : data.command;
+  const args = Object.hasOwn(patch, "args") ? patch.args : data.args;
+  const url = Object.hasOwn(patch, "url") ? patch.url : data.url;
+  const headerSecretId = Object.hasOwn(patch, "headerSecretId") ? patch.headerSecretId : data.headerSecretId;
+  return mcpNodeDataSchema.parse({
+    label: patch.label ?? data.label,
+    ...(transport ? { transport } : {}),
+    ...(command ? { command } : {}),
+    ...(args && args.length > 0 ? { args } : {}),
+    ...(url ? { url } : {}),
+    ...(headerSecretId ? { headerSecretId } : {}),
+  });
 }

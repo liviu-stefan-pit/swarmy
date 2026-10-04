@@ -30,6 +30,22 @@ const swarmy: SwarmyApi = {
       return () => undefined;
     },
   },
+  files: {
+    pathForFile() {
+      return "";
+    },
+  },
+  mcp: {
+    saveHeaders() {
+      return Promise.resolve("secret-test");
+    },
+    readHeaders() {
+      return Promise.resolve({});
+    },
+    listTools() {
+      return Promise.resolve([]);
+    },
+  },
   settings: {
     saveKey() {
       return Promise.resolve();

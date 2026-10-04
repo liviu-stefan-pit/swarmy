@@ -35,9 +35,9 @@ import {
   workflowRunChannel,
   workflowRunResultSchema,
 } from "@shared/runs";
-import { workflowSchema } from "@shared/workflow";
+import { workflowSchema, type Workflow } from "@shared/workflow";
 import type { EngineHost } from "./engine-host";
-import { readApiKey } from "./secret-store";
+import { readApiKey, readMcpHeaders } from "./secret-store";
 
 export function registerRunIpc(engine: EngineHost): void {
   ipcMain.handle(runStartChannel, async (_event, payload: unknown) => {
@@ -81,12 +81,14 @@ export function registerRunIpc(engine: EngineHost): void {
   ipcMain.handle(workflowRunChannel, async (_event, payload: unknown) => {
     const workflow = workflowSchema.parse(payload);
     const apiKey = apiKeyForRun();
+    const mcpHeaders = mcpHeadersFor(workflow);
     try {
       const result = await engine.request({
         type: "workflow.run",
         id: randomUUID(),
         workflow,
         apiKey,
+        ...(mcpHeaders ? { mcpHeaders } : {}),
       });
       if (result.type !== "workflow.runDone") {
         throw new Error("Unexpected engine response");
@@ -97,7 +99,7 @@ export function registerRunIpc(engine: EngineHost): void {
         ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
       });
     } catch (error) {
-      throw new Error(scrub(errorText(error), apiKey), { cause: error });
+      throw new Error(scrubAll(errorText(error), [apiKey, ...headerValues(mcpHeaders)]), { cause: error });
     }
   });
 
@@ -231,6 +233,7 @@ export function registerRunIpc(engine: EngineHost): void {
   ipcMain.handle(workflowResumeChannel, async (_event, payload: unknown) => {
     const parsed = workflowResumePayloadSchema.parse(payload);
     const apiKey = apiKeyForRun();
+    const mcpHeaders = mcpHeadersFor(parsed.workflow);
     try {
       const result = await engine.request({
         type: "workflow.resume",
@@ -239,6 +242,7 @@ export function registerRunIpc(engine: EngineHost): void {
         apiKey,
         threadId: parsed.threadId,
         ...(parsed.decision ? { decision: parsed.decision } : {}),
+        ...(mcpHeaders ? { mcpHeaders } : {}),
       });
       if (result.type !== "workflow.runDone") {
         throw new Error("Unexpected engine response");
@@ -249,7 +253,7 @@ export function registerRunIpc(engine: EngineHost): void {
         ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
       });
     } catch (error) {
-      throw new Error(scrub(errorText(error), apiKey), { cause: error });
+      throw new Error(scrubAll(errorText(error), [apiKey, ...headerValues(mcpHeaders)]), { cause: error });
     }
   });
 
@@ -295,9 +299,37 @@ function errorText(error: unknown): string {
   return error instanceof Error ? error.message : "The run failed";
 }
 
-function scrub(message: string, secret: string): string {
-  if (!secret || secret === "fake") {
-    return message;
+function mcpHeadersFor(workflow: Workflow): Record<string, Record<string, string>> | undefined {
+  const map: Record<string, Record<string, string>> = {};
+  for (const node of workflow.nodes) {
+    if (node.type !== "mcp" || !node.data.headerSecretId) continue;
+    const headers = readMcpHeaders(node.data.headerSecretId);
+    if (!headers) continue;
+    map[node.data.headerSecretId] = headers;
   }
-  return message.split(secret).join("[redacted]");
+  return Object.keys(map).length > 0 ? map : undefined;
+}
+
+function headerValues(headers: Record<string, Record<string, string>> | undefined): string[] {
+  if (!headers) return [];
+  const values: string[] = [];
+  for (const row of Object.values(headers)) {
+    for (const value of Object.values(row)) {
+      if (value.length > 0) values.push(value);
+    }
+  }
+  return values;
+}
+
+function scrub(message: string, secret: string): string {
+  return scrubAll(message, [secret]);
+}
+
+function scrubAll(message: string, secrets: readonly string[]): string {
+  let next = message;
+  for (const secret of secrets) {
+    if (!secret || secret === "fake") continue;
+    next = next.split(secret).join("[redacted]");
+  }
+  return next;
 }

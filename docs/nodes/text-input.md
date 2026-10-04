@@ -16,9 +16,9 @@ Connect that output to a blue input:
 
 The same Text node can feed several of those at once. That is how one brief reaches two agents in parallel.
 
-## Later
+## What you type
 
-Phase 20 adds the box where you type the text, and downstream prompts receive it. Until then the card shows its label only.
+Select the card. The inspector has **Text** (`inspector-text`). What you type there is added to every downstream agent and planner prompt. The workflow stores that text. It does not store a run log.
 
 ## Schema
 
@@ -27,7 +27,7 @@ Phase 20 adds the box where you type the text, and downstream prompts receive it
   "id": "brief",
   "type": "textInput",
   "position": { "x": 0, "y": 160 },
-  "data": { "label": "Brief" }
+  "data": { "label": "Brief", "text": "Ship the notes." }
 }
 ```
 

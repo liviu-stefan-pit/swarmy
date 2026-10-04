@@ -1,4 +1,4 @@
-import { contextBridge, ipcRenderer, type IpcRendererEvent } from "electron";
+import { contextBridge, ipcRenderer, webUtils, type IpcRendererEvent } from "electron";
 import { engineStatusChannel, engineStatusSchema, type EngineStatus } from "@shared/protocol";
 import {
   approvalDecideChannel,
@@ -43,6 +43,18 @@ import {
   type PlannerWorker,
   type RunUpdate,
 } from "@shared/runs";
+import {
+  mcpHeaderMapSchema,
+  mcpListToolsChannel,
+  mcpListToolsPayloadSchema,
+  mcpReadHeadersChannel,
+  mcpReadHeadersPayloadSchema,
+  mcpReadHeadersResultSchema,
+  mcpSaveHeadersChannel,
+  mcpSaveHeadersPayloadSchema,
+  mcpSecretIdSchema,
+  mcpToolNamesSchema,
+} from "@shared/mcp";
 import {
   connectionInfoSchema,
   hasKeyChannel,
@@ -124,6 +136,30 @@ const swarmy: SwarmyApi = {
       return () => {
         listeners.delete(listener);
       };
+    },
+  },
+  files: {
+    pathForFile(file) {
+      return webUtils.getPathForFile(file);
+    },
+  },
+  mcp: {
+    async saveHeaders(headers, secretId) {
+      const parsed = mcpSaveHeadersPayloadSchema.parse({
+        headers,
+        ...(secretId ? { secretId } : {}),
+      });
+      const result = mcpSecretIdSchema.parse(await ipcRenderer.invoke(mcpSaveHeadersChannel, parsed));
+      return result.secretId;
+    },
+    async readHeaders(secretId) {
+      const parsed = mcpReadHeadersPayloadSchema.parse({ secretId });
+      const result = mcpReadHeadersResultSchema.parse(await ipcRenderer.invoke(mcpReadHeadersChannel, parsed));
+      return mcpHeaderMapSchema.parse(result.headers);
+    },
+    async listTools(request) {
+      const parsed = mcpListToolsPayloadSchema.parse(request);
+      return mcpToolNamesSchema.parse(await ipcRenderer.invoke(mcpListToolsChannel, parsed));
     },
   },
   settings: {

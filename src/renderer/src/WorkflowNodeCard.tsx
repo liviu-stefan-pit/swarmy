@@ -1,4 +1,4 @@
-import type { CSSProperties, MouseEvent, PointerEvent } from "react";
+import type { CSSProperties, DragEvent, MouseEvent, PointerEvent } from "react";
 import { Handle, Position, type Node, type NodeProps } from "@xyflow/react";
 import { getNodeType } from "@shared/node-registry";
 import type { NodeRunStatus } from "@shared/runs";
@@ -19,6 +19,7 @@ type FlowNodeData = {
   status?: NodeRunStatus;
   busy?: boolean;
   workflowRunning?: boolean;
+  mcpTools?: readonly string[];
 };
 
 const statusClass: Record<NodeRunStatus, string> = {
@@ -30,6 +31,11 @@ const statusClass: Record<NodeRunStatus, string> = {
   failed: "bg-red-950 text-red-200",
   cancelled: "bg-amber-950 text-amber-200",
 };
+
+function fileName(path: string): string {
+  const parts = path.split(/[/\\]/);
+  return parts[parts.length - 1] || path;
+}
 
 function handleStyle(type: HandleDataType): CSSProperties {
   return {
@@ -53,10 +59,37 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
   const deleteLocked = status === "running" || data.workflowRunning === true;
   const workers = useRunStore((state) => state.plannerWorkers);
   const rows = type === "planner" ? workers.filter((worker) => worker.plannerId === id) : [];
+  const fileSource = useWorkflowStore((state) => {
+    const node = state.workflow.nodes.find((item) => item.id === id);
+    return node?.type === "fileInput" ? node.data.sourcePath : undefined;
+  });
+  const tools = data.mcpTools ?? [];
 
   return (
     <article
       data-testid="canvas-node"
+      onDragOver={
+        type === "fileInput"
+          ? (event: DragEvent<HTMLElement>) => {
+              event.preventDefault();
+              event.stopPropagation();
+            }
+          : undefined
+      }
+      onDrop={
+        type === "fileInput"
+          ? (event: DragEvent<HTMLElement>) => {
+              event.preventDefault();
+              event.stopPropagation();
+              const file = event.dataTransfer.files.item(0);
+              if (!file) return;
+              const sourcePath = window.swarmy.files.pathForFile(file);
+              if (!sourcePath) return;
+              useWorkflowStore.getState().updateNode(id, { sourcePath });
+              useWorkflowStore.getState().selectNode(id);
+            }
+          : undefined
+      }
       className={`${type === "planner" ? "w-56" : "min-w-44"} rounded-md border bg-zinc-900 px-3 py-2 text-zinc-50 shadow ${
         selected ? "border-sky-400" : "border-zinc-600"
       }`}
@@ -92,6 +125,20 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
           </button>
         </div>
       </header>
+      {type === "fileInput" ? (
+        <p data-testid="file-drop" className="mt-2 truncate text-xs text-zinc-400">
+          {fileSource ? fileName(fileSource) : "Drop a file"}
+        </p>
+      ) : null}
+      {type === "mcp" && tools.length > 0 ? (
+        <ul data-testid="mcp-tools" className="mt-2 space-y-1 text-xs text-zinc-200">
+          {tools.map((name) => (
+            <li key={name} data-testid="mcp-tool-name">
+              {name}
+            </li>
+          ))}
+        </ul>
+      ) : null}
       {outputs.length > 0 ? (
         <div className="mt-2 space-y-1">
           {outputs.map((handle) => (

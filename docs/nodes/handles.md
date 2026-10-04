@@ -14,6 +14,8 @@ Phase 18 does not change this table. A planner still takes and produces `text`. 
 
 Phase 19 does not change this table. A merge still takes and produces `text` and `diff`. The target branch is a field on the merge node, not a handle. Omitting it means `main`.
 
+Phase 20 does not change this table. Text, file, folder, and MCP are still sources. A text node stores the text you type. A file node stores the dropped file's path. A folder node stores a folder path and, when wired to an agent, sets that agent's workspace to `folder` mode. An MCP node stores a stdio command or an HTTP url, plus `headerSecretId` when headers were saved. Header values are not in the workflow.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |
@@ -111,6 +113,10 @@ A workflow is one JSON object. Every node stores a `label`. An agent also stores
 | `repositoryPath` | Optional path of the git clone. A `repo` run requires it. Worktrees are created outside this clone |
 | `nodes[].data` on an agent | Optional `modelId`, `systemPrompt`, `taskPrompt`, `tools`, `disallowedTools`, `workspaceMode` (`repo`, `managed`, or `folder`), and `folderPath`. Run status is not stored here |
 | `nodes[].data` on a merge | `label`, and optional `targetBranch`. Omitting `targetBranch` means `main` |
+| `nodes[].data` on text | `label`, and optional `text` |
+| `nodes[].data` on a file | `label`, and optional `sourcePath`. The file bytes are not stored |
+| `nodes[].data` on a folder | `label`, and optional `folderPath` |
+| `nodes[].data` on MCP | `label`, `transport` (`stdio` or `http`, default `stdio`), optional `command`, `args`, `url`, and `headerSecretId`. Header values are not a field |
 | `edges[].id` | Unique, non-empty |
 | `edges[].source`, `target` | Node ids that exist |
 | `edges[].sourceHandle` | An output id of the source node |

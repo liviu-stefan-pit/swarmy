@@ -349,6 +349,7 @@ async function answerWorkflowRun(
       workspaces: getWorkspaces(),
       checkpointer: getCheckpointer(),
       taskBoard: getTaskBoard(),
+      ...(message.mcpHeaders ? { mcpHeaders: message.mcpHeaders } : {}),
       onBoard(tasks) {
         port.postMessage({ type: "board.update", tasks });
       },
@@ -367,7 +368,7 @@ async function answerWorkflowRun(
           type: "run.update",
           nodeId: update.nodeId,
           status: update.status,
-          log: scrub(update.log, message.apiKey),
+          log: scrub(update.log, message.apiKey, headerValues(message.mcpHeaders)),
           ...(update.workspacePath ? { workspacePath: update.workspacePath } : {}),
           ...(update.files && update.files.length > 0 ? { files: update.files } : {}),
         });
@@ -383,7 +384,11 @@ async function answerWorkflowRun(
       ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
     });
   } catch (error) {
-    const text = scrub(error instanceof Error && error.message ? error.message : "The workflow run failed", message.apiKey);
+    const text = scrub(
+      error instanceof Error && error.message ? error.message : "The workflow run failed",
+      message.apiKey,
+      headerValues(message.mcpHeaders),
+    );
     port.postMessage({
       type: "workflow.failed",
       id: message.id,
@@ -730,11 +735,26 @@ function postFailure(port: EnginePort, id: string, error: unknown, secret: strin
   });
 }
 
-function scrub(message: string, secret: string): string {
-  if (!secret) {
-    return message;
+function headerValues(
+  headers: Record<string, Record<string, string>> | undefined,
+): string[] {
+  if (!headers) return [];
+  const values: string[] = [];
+  for (const row of Object.values(headers)) {
+    for (const value of Object.values(row)) {
+      if (value.length > 0) values.push(value);
+    }
   }
-  return message.split(secret).join("[redacted]");
+  return values;
+}
+
+function scrub(message: string, secret: string, extra: readonly string[] = []): string {
+  let next = message;
+  for (const value of [secret, ...extra]) {
+    if (!value || value === "fake") continue;
+    next = next.split(value).join("[redacted]");
+  }
+  return next;
 }
 
 function readMessage(input: unknown): EngineMessage | undefined {

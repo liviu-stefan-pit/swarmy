@@ -43,7 +43,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 18 | Planner node | [x] | phase-18 | 2026-10-04 |
 | 19 | Merge node | [x] | phase-19 | 2026-10-04 |
 | 19.5 | Review layout | [x] | phase-19.5 | 2026-10-04 |
-| 20 | Inputs and MCP | [ ] | | |
+| 20 | Inputs and MCP | [x] | phase-20 | 2026-10-04 |
 | 21 | Templates and export | [ ] | | |
 | 22 | Triggers and notifications | [ ] | | |
 | 23 | Packaging | [ ] | | |
@@ -1778,8 +1778,38 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Drop a small text file onto a file node wired to an agent. Run. The agent's log shows it read the contents.
-2. Add an MCP node for a local stdio server you already trust, test the connection, and see its tool names. Run the agent and confirm the log shows a tool call from that server.
+This uses one real Cursor agent, a small text file, and the local stdio server in `scripts\mcp-list-server.mjs`. Leave **Token budget** empty. You do not need `C:\prod\scratch-repo` for this phase.
+
+1. In PowerShell, create the file the agent will read:
+
+```powershell
+Set-Content -Path C:\prod\swarmy-phase20.txt -Value "swarmy phase 20 file"
+```
+
+2. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+3. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+4. In the toolbar, click **New**. In **Name**, type `Inputs` and press Tab. Leave **Token budget** empty.
+5. From **Nodes**, drag **Text**, **File**, and **Agent** onto the canvas. Click **Text**. In the inspector, **Text** is empty. Type `The brief is: quote the file.`
+6. Click **File**. It says **No file yet.** Drag `C:\prod\swarmy-phase20.txt` onto the **File** card. The card then shows `swarmy-phase20.txt`. The inspector path contains `swarmy-phase20.txt`.
+7. Click **Agent**. Set **Task prompt** to `Quote the dropped file exactly, then quote the brief.` Leave **Workspace mode** unset.
+8. Drag the blue **text** output on **Text** to the blue **text** input on **Agent**. Drag the amber **file** output on **File** to the amber **file** input on **Agent**.
+9. In the toolbar, click **Run**. Wait until **Agent** reads **completed**. Click **Agent**. The **Run log** includes `swarmy phase 20 file` and `The brief is: quote the file.`
+
+MCP, still in this window:
+
+10. Click **New**. In **Name**, type `MCP tools` and press Tab. Leave **Token budget** empty. Drag **MCP** and **Agent** onto the canvas.
+11. Click **MCP**. **Transport** is `stdio`. **URL** is not shown. Set **Command** to `node`. In **Arguments**, paste `C:\prod\swarmy\scripts\mcp-list-server.mjs` as the only line.
+12. Under **Headers**, type `Authorization` in the name box and `phase20-not-in-the-file` in the value box. Click **Save headers**. The line under the button says **Headers saved on this PC.**
+13. Click **Test connection**. Wait until it says **Connection ok.** The MCP card lists `echo` and `ping`. The inspector lists them too.
+14. Click **Agent**. Set **Task prompt** to `Call the echo tool with the text hello-from-swarmy. Then stop.` Drag the violet **mcp** output on **MCP** to the violet **mcp** input on **Agent**.
+15. In the toolbar, click **Run**. Wait until **Agent** reads **completed**. The **Run log** includes `echo` and `hello-from-swarmy`.
+16. Leave the window open. In PowerShell:
+
+```powershell
+Select-String -Path "$env:APPDATA\Swarmy\swarmy.db" -Pattern "phase20-not-in-the-file" -SimpleMatch
+```
+
+`Select-String` prints nothing. The workflow row stores `headerSecretId`. It does not store that header value. The password box may still show the value, because the app reads it back from this PC.
 
 **Prompt.**
 
@@ -1794,7 +1824,12 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- A text node stores `text`. A file node stores `sourcePath` (the path, not the bytes). A folder node stores `folderPath`. An MCP node stores `transport` (`stdio` or `http`), `command`, `args`, `url`, and `headerSecretId`. Omitting `transport` means `stdio`. Existing workflows that only stored `label` still load.
+- Toolbar **Run** copies each dropped file into the run input directory (`inputs\<thread>\<node>\`) and adds that path plus at most 20 KB of the file to the downstream prompt. A connected folder node forces the agent into `folder` mode at that path. Text is included in the downstream prompt. A connected MCP server is passed on `Agent.create` and again on `Agent.resume`. Header values are resolved from `safeStorage` at run time and are not written back onto the workflow.
+- **Save headers** encrypts the header map on this PC and keeps only the secret id in the graph. **Test connection** lists tool names on the MCP card. `exportWorkflowJson` is the workflow document after that save. `scripts/mcp-list-server.mjs` is the local stdio server for the manual test (`echo` and `ping`).
+- Node docs updated (decision D13): the index, `handles.md` (handles did not change), and the text, file, folder, MCP, and agent pages. No new decision. Phase 21 is unchanged.
+- The manual test above is the step-by-step walkthrough. `npm run verify` exited 0.
+- Dropping an MCP node selects it. The inspector was reading the tool list with a fresh empty array whenever that node had no tools yet, and React re-rendered until the window went blank. The empty list is now one stable value.
 
 ---
 

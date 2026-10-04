@@ -10,9 +10,16 @@ Drag **MCP** onto the canvas. The card has one output, **MCP**, in violet, and a
 
 That output connects only to an [Agent](agent.md) `mcp` input. One server can feed several agents.
 
-## Later
+## The server
 
-Phase 20 adds the server config (a local command, or an HTTP url), a test button that lists the server's tools, and secret storage for headers. Header values stay out of the workflow JSON (decision D10). Until then the card is only a labeled source in the graph.
+Select the card. **Transport** is `stdio` or `http`.
+
+- `stdio` asks for a **Command** and **Arguments**, one argument per line. Swarmy starts that program and talks to it on stdin.
+- `http` asks for a **URL**. Optional **Headers** are a name and a value. **Save headers** stores the values with Electron `safeStorage` on this PC and keeps only `headerSecretId` in the workflow. The header value is not in the workflow JSON (decision D10).
+
+**Test connection** asks the server for its tools and lists the names on this card. Saving the workflow does not save that list.
+
+Wiring this output to an agent adds the server when that agent is created and again when that agent is resumed.
 
 ## Schema
 
@@ -21,7 +28,12 @@ Phase 20 adds the server config (a local command, or an HTTP url), a test button
   "id": "tools",
   "type": "mcp",
   "position": { "x": 0, "y": 0 },
-  "data": { "label": "MCP" }
+  "data": {
+    "label": "MCP",
+    "transport": "stdio",
+    "command": "node",
+    "args": ["C:\\prod\\swarmy\\scripts\\mcp-list-server.mjs"]
+  }
 }
 ```
 

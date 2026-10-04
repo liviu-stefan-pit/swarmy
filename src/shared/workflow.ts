@@ -39,6 +39,32 @@ export const labelDataSchema = z.strictObject({
   label: z.string().min(1),
 });
 
+export const textInputDataSchema = z.strictObject({
+  label: z.string().min(1),
+  text: z.string().optional(),
+});
+
+export const fileInputDataSchema = z.strictObject({
+  label: z.string().min(1),
+  sourcePath: z.string().min(1).optional(),
+});
+
+export const folderInputDataSchema = z.strictObject({
+  label: z.string().min(1),
+  folderPath: z.string().min(1).optional(),
+});
+
+export const mcpTransportSchema = z.enum(["stdio", "http"]);
+
+export const mcpNodeDataSchema = z.strictObject({
+  label: z.string().min(1),
+  transport: mcpTransportSchema.default("stdio"),
+  command: z.string().min(1).optional(),
+  args: z.array(z.string()).optional(),
+  url: z.string().min(1).optional(),
+  headerSecretId: z.string().min(1).optional(),
+});
+
 // `tools` and `disallowedTools` stay optional. An empty array is a real value
 // (no built-in tools). A missing field means the SDK default. Do not default either one.
 export const agentNodeDataSchema = z.strictObject({
@@ -82,10 +108,10 @@ export const mergeNodeDataSchema = z.strictObject({
 export const workflowNodeSchema = z.discriminatedUnion("type", [
   workflowNode("agent", agentNodeDataSchema),
   workflowNode("approval", labelDataSchema),
-  workflowNode("fileInput", labelDataSchema),
-  workflowNode("folderInput", labelDataSchema),
-  workflowNode("textInput", labelDataSchema),
-  workflowNode("mcp", labelDataSchema),
+  workflowNode("fileInput", fileInputDataSchema),
+  workflowNode("folderInput", folderInputDataSchema),
+  workflowNode("textInput", textInputDataSchema),
+  workflowNode("mcp", mcpNodeDataSchema),
   workflowNode("merge", mergeNodeDataSchema),
   workflowNode("planner", plannerNodeDataSchema),
 ]);
@@ -125,6 +151,11 @@ export type Viewport = z.infer<typeof viewportSchema>;
 export type NodeTypeId = z.infer<typeof nodeTypeIdSchema>;
 export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;
 export type LabelNodeData = z.infer<typeof labelDataSchema>;
+export type TextInputNodeData = z.infer<typeof textInputDataSchema>;
+export type FileInputNodeData = z.infer<typeof fileInputDataSchema>;
+export type FolderInputNodeData = z.infer<typeof folderInputDataSchema>;
+export type McpNodeData = z.infer<typeof mcpNodeDataSchema>;
+export type McpTransport = z.infer<typeof mcpTransportSchema>;
 export type AgentNodeData = z.infer<typeof agentNodeDataSchema>;
 export type PlannerNodeData = z.infer<typeof plannerNodeDataSchema>;
 export type MergeNodeData = z.infer<typeof mergeNodeDataSchema>;

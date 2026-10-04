@@ -18,6 +18,7 @@ import { getNodeType, nodeTypes } from "@shared/node-registry";
 import type { NodeRunStatus } from "@shared/runs";
 import { NodeInspector } from "./NodeInspector";
 import { Palette } from "./Palette";
+import { useMcpToolsStore } from "./mcp-tools-store";
 import { useRunStore } from "./run-store";
 import { WorkflowEdge } from "./WorkflowEdge";
 import { WorkflowLibrary } from "./WorkflowLibrary";
@@ -63,6 +64,8 @@ function FlowSurface() {
   const edges = useWorkflowStore((state) => state.workflow.edges);
   const selectedNodeId = useWorkflowStore((state) => state.selectedNodeId);
   const statusByNode = useRunStore((state) => state.statusByNode);
+  const mcpTools = useMcpToolsStore((state) => state.byNodeId);
+  const workflowId = useWorkflowStore((state) => state.workflow.id);
   const workflowRunning = useRunStore((state) => state.workflowRunning);
   const runBusy = useRunStore((state) => state.activeNodeId !== null) || workflowRunning;
   const connectionError = useWorkflowStore((state) => state.connectionError);
@@ -75,7 +78,13 @@ function FlowSurface() {
   const initialViewport = useMemo(() => useWorkflowStore.getState().workflow.viewport, []);
 
   const flowNodes = useMemo<
-    Node<{ label: string; status: NodeRunStatus; busy: boolean; workflowRunning: boolean }>[]
+    Node<{
+      label: string;
+      status: NodeRunStatus;
+      busy: boolean;
+      workflowRunning: boolean;
+      mcpTools?: readonly string[];
+    }>[]
   >(
     () =>
       nodes.map((node) => {
@@ -90,11 +99,12 @@ function FlowSurface() {
             status,
             busy: runBusy,
             workflowRunning,
+            ...(mcpTools[node.id] ? { mcpTools: mcpTools[node.id] } : {}),
           },
           selected: node.id === selectedNodeId,
         };
       }),
-    [nodes, runBusy, selectedNodeId, statusByNode, workflowRunning],
+    [mcpTools, nodes, runBusy, selectedNodeId, statusByNode, workflowRunning],
   );
 
   const flowEdges = useMemo<Edge[]>(
@@ -117,9 +127,9 @@ function FlowSurface() {
 
     const onDragOver = (event: DragEvent) => {
       event.preventDefault();
-      if (event.dataTransfer) {
-        event.dataTransfer.dropEffect = "move";
-      }
+      if (!event.dataTransfer) return;
+      const fromDisk = event.dataTransfer.types.includes("Files");
+      event.dataTransfer.dropEffect = fromDisk ? "copy" : "move";
     };
 
     const onDrop = (event: DragEvent) => {
@@ -137,6 +147,10 @@ function FlowSurface() {
       element.removeEventListener("drop", onDrop, true);
     };
   }, [addNode, screenToFlowPosition]);
+
+  useEffect(() => {
+    useMcpToolsStore.setState({ byNodeId: {} });
+  }, [workflowId]);
 
   function onNodesChange(changes: NodeChange[]): void {
     for (const change of changes) {
