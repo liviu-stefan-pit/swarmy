@@ -301,7 +301,7 @@ export function WorkflowLibrary({ children }: { children: ReactNode }) {
 
   if (!ready) {
     return (
-      <div className="flex min-h-0 flex-1 flex-col justify-center px-4">
+      <div className="flex min-h-0 flex-1 flex-col justify-center px-4" data-testid="workflow-editor">
         {error ? (
           <p data-testid="workflow-error" className="text-sm text-red-300">
             {error}
@@ -316,7 +316,7 @@ export function WorkflowLibrary({ children }: { children: ReactNode }) {
   }
 
   return (
-    <div className="flex min-h-0 flex-1 flex-col">
+    <div className="flex min-h-0 flex-1 flex-col" data-testid="workflow-editor">
       <WorkflowToolbar
         summaries={summaries}
         busy={busy}

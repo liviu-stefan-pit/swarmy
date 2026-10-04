@@ -1,5 +1,7 @@
 import { Component, lazy, Suspense, useState, type ReactNode } from "react";
 import type { PendingApproval } from "@shared/runs";
+import { CollapseControl } from "./PanelChrome";
+import { usePanelLayoutStore } from "./panel-layout-store";
 import { useRunStore } from "./run-store";
 import { useWorkflowStore } from "./workflow-store";
 
@@ -8,19 +10,28 @@ const DiffReview = lazy(() => import("./DiffReview").then((module) => ({ default
 export function ApprovalInbox() {
   const approvals = useRunStore((state) => state.approvals);
   const nodes = useWorkflowStore((state) => state.workflow.nodes);
+  const collapsed = usePanelLayoutStore((state) => state.inboxCollapsed);
+  const toggleInbox = usePanelLayoutStore((state) => state.toggleInbox);
 
   return (
-    <section data-testid="approval-inbox" className="max-h-[45vh] overflow-auto border-t border-zinc-800 px-4 py-2">
-      <h2 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Inbox</h2>
-      {approvals.length === 0 ? (
-        <p className="mt-1 text-sm text-zinc-500">No approvals waiting.</p>
-      ) : (
-        <ul className="mt-2 space-y-2">
-          {approvals.map((item) => {
-            const label = nodes.find((node) => node.id === item.nodeId)?.data.label ?? item.nodeId;
-            return <ApprovalRow key={item.nodeId} item={item} label={label} />;
-          })}
-        </ul>
+    <section data-testid="approval-inbox" className="border-t border-zinc-800 px-4 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <h2 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Inbox</h2>
+        <CollapseControl testId="collapse-inbox" title="Inbox" collapsed={collapsed} onToggle={toggleInbox} />
+      </div>
+      {collapsed ? null : (
+        <>
+          {approvals.length === 0 ? (
+            <p className="mt-1 text-sm text-zinc-500">No approvals waiting.</p>
+          ) : (
+            <ul className="mt-2 space-y-2">
+              {approvals.map((item) => {
+                const label = nodes.find((node) => node.id === item.nodeId)?.data.label ?? item.nodeId;
+                return <ApprovalRow key={item.nodeId} item={item} label={label} />;
+              })}
+            </ul>
+          )}
+        </>
       )}
     </section>
   );

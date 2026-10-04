@@ -1,5 +1,7 @@
 import { getNodeType } from "@shared/node-registry";
 import { workspaceModeSchema, type AgentNodeData, type WorkflowNode } from "@shared/workflow";
+import { CollapseControl, IconRail, InspectorIcon, ResizeEdge } from "./PanelChrome";
+import { usePanelLayoutStore } from "./panel-layout-store";
 import { useWorkflowStore } from "./workflow-store";
 
 const fieldClass =
@@ -33,18 +35,52 @@ export function NodeInspector() {
     state.workflow.nodes.find((item) => item.id === state.selectedNodeId),
   );
   const updateSelectedNode = useWorkflowStore((state) => state.updateSelectedNode);
+  const inspectorWidth = usePanelLayoutStore((state) => state.inspectorWidth);
+  const collapsed = usePanelLayoutStore((state) => state.inspectorCollapsed);
+  const toggleInspector = usePanelLayoutStore((state) => state.toggleInspector);
+
+  if (collapsed) {
+    return (
+      <IconRail
+        railTestId="node-inspector"
+        testId="collapse-inspector"
+        title="Inspector"
+        border="left"
+        icon={<InspectorIcon />}
+        onToggle={toggleInspector}
+      />
+    );
+  }
 
   return (
     <aside
       data-testid="node-inspector"
-      className="flex w-80 shrink-0 flex-col gap-3 overflow-y-auto border-l border-zinc-800 p-3"
+      className="relative flex shrink-0 flex-col border-l border-zinc-800"
+      style={{ width: inspectorWidth }}
     >
-      <h2 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Inspector</h2>
-      {node ? (
-        <NodeFields node={node} onChange={updateSelectedNode} />
-      ) : (
-        <p className="text-sm text-zinc-400">Select a node.</p>
-      )}
+      <div className="flex items-center justify-between gap-2 px-3 py-2">
+        <h2 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Inspector</h2>
+        <CollapseControl
+          testId="collapse-inspector"
+          title="Inspector"
+          collapsed={collapsed}
+          onToggle={toggleInspector}
+        />
+      </div>
+      <div className="flex flex-col gap-3 overflow-y-auto px-3 pb-3">
+        {node ? (
+          <NodeFields node={node} onChange={updateSelectedNode} />
+        ) : (
+          <p className="text-sm text-zinc-400">Select a node.</p>
+        )}
+      </div>
+      <ResizeEdge
+        testId="resize-inspector"
+        edge="inspector"
+        orientation="vertical"
+        label="Resize Inspector"
+        className="absolute top-0 left-0 z-10 h-full w-1.5 cursor-col-resize hover:bg-sky-600"
+      />
     </aside>
   );
 }

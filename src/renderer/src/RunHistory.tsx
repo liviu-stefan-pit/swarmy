@@ -1,6 +1,8 @@
 import { useEffect, useState } from "react";
 import type { RunHistoryDetail, RunHistoryEntry } from "@shared/runs";
 import { budgetExceededMessage } from "@shared/runs";
+import { CollapseControl } from "./PanelChrome";
+import { usePanelLayoutStore } from "./panel-layout-store";
 import { useRunStore } from "./run-store";
 import { useWorkflowStore } from "./workflow-store";
 
@@ -110,60 +112,79 @@ export function RunHistory() {
     }
   }
 
+  const collapsed = usePanelLayoutStore((state) => state.historyCollapsed);
+  const toggleHistory = usePanelLayoutStore((state) => state.toggleHistory);
+
   return (
     <section className="border-t border-zinc-800 px-4 py-2" data-testid="run-history">
-      <div className="flex flex-wrap items-center gap-2">
-        <h2 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">History</h2>
-        <select
-          data-testid="run-history-list"
-          aria-label="Run history"
-          value={selectedId}
-          className="max-w-md rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-50"
-          onChange={(event) => {
-            void openRun(event.target.value);
-          }}
-        >
-          <option value="">{runs.length === 0 ? "No past runs" : "Open a past run"}</option>
-          {runs.map((run) => (
-            <option key={run.threadId} value={run.threadId}>
-              {runLabel(run)}
-            </option>
-          ))}
-        </select>
-        {selectedId.length > 0 ? (
-          <button
-            type="button"
-            data-testid="run-history-refresh"
-            disabled={refreshing}
-            className="rounded border border-zinc-600 px-3 py-1 text-sm hover:bg-zinc-800 disabled:opacity-50"
-            onClick={() => {
-              void refreshCost();
-            }}
-          >
-            Refresh cost
-          </button>
-        ) : null}
-      </div>
-      {error ? <p className="mt-1 text-sm text-red-300">{error}</p> : null}
-      {detail ? (
-        <div className="mt-2 space-y-1">
-          {detail.status === "budget_exceeded" ? (
-            <p className="text-sm text-amber-300">{budgetExceededMessage}</p>
-          ) : null}
-          <p data-testid="run-history-tokens" className="text-sm text-zinc-200">
-            {tokenLabel(detail.nodes)}
-          </p>
-          <p data-testid="run-history-cost" className="text-sm text-zinc-200">
-            {costLabel(detail.nodes)}
-          </p>
-          <pre
-            data-testid="run-history-log"
-            className="max-h-28 overflow-auto font-mono text-xs whitespace-pre-wrap text-zinc-200"
-          >
-            {transcriptOf(detail)}
-          </pre>
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-2">
+          <h2 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">History</h2>
+          {collapsed ? null : (
+            <>
+              <select
+                data-testid="run-history-list"
+                aria-label="Run history"
+                value={selectedId}
+                className="max-w-md rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-sm text-zinc-50"
+                onChange={(event) => {
+                  void openRun(event.target.value);
+                }}
+              >
+                <option value="">{runs.length === 0 ? "No past runs" : "Open a past run"}</option>
+                {runs.map((run) => (
+                  <option key={run.threadId} value={run.threadId}>
+                    {runLabel(run)}
+                  </option>
+                ))}
+              </select>
+              {selectedId.length > 0 ? (
+                <button
+                  type="button"
+                  data-testid="run-history-refresh"
+                  disabled={refreshing}
+                  className="rounded border border-zinc-600 px-3 py-1 text-sm hover:bg-zinc-800 disabled:opacity-50"
+                  onClick={() => {
+                    void refreshCost();
+                  }}
+                >
+                  Refresh cost
+                </button>
+              ) : null}
+            </>
+          )}
         </div>
-      ) : null}
+        <CollapseControl
+          testId="collapse-history"
+          title="Run history"
+          collapsed={collapsed}
+          onToggle={toggleHistory}
+        />
+      </div>
+      {collapsed ? null : (
+        <>
+          {error ? <p className="mt-1 text-sm text-red-300">{error}</p> : null}
+          {detail ? (
+            <div className="mt-2 space-y-1">
+              {detail.status === "budget_exceeded" ? (
+                <p className="text-sm text-amber-300">{budgetExceededMessage}</p>
+              ) : null}
+              <p data-testid="run-history-tokens" className="text-sm text-zinc-200">
+                {tokenLabel(detail.nodes)}
+              </p>
+              <p data-testid="run-history-cost" className="text-sm text-zinc-200">
+                {costLabel(detail.nodes)}
+              </p>
+              <pre
+                data-testid="run-history-log"
+                className="max-h-28 overflow-auto font-mono text-xs whitespace-pre-wrap text-zinc-200"
+              >
+                {transcriptOf(detail)}
+              </pre>
+            </div>
+          ) : null}
+        </>
+      )}
     </section>
   );
 }

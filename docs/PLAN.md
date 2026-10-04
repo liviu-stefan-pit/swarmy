@@ -36,7 +36,7 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 14 | Guardrails | [x] | phase-14 | 2026-10-04 |
 | 15 | Observability and budgets | [x] | phase-15 | 2026-10-04 |
 | 15.5 | Delete a node | [x] | phase-15.5 | 2026-10-04 |
-| 15.6 | Resize and collapse panels | [ ] | | |
+| 15.6 | Resize and collapse panels | [x] | phase-15.6 | 2026-10-04 |
 | 16 | Time travel | [ ] | | |
 | 17 | Shared task board | [ ] | | |
 | 18 | Planner node | [ ] | | |
@@ -63,7 +63,7 @@ Phase 13 initialized `C:\prod\scratch-repo` with a committed `README.md` that co
 
 Node deletion is Phase 15.5. Phase 15 does not build it. Phase 5 left the Delete key off on purpose; 15.5 turns it back on, with a button on the card. Every card has **Delete** (`data-testid="delete-node"`). Delete and Backspace remove the selected node when focus is outside a text field, and they leave the workflow in place.
 
-Panel layout is Phase 15.6. Phase 15.5 does not build it. The palette, inspector, inbox, history, and run log stay fixed until that phase.
+Panel layout shipped in Phase 15.6. The palette, inspector, and the stack under the canvas can be resized, and Nodes, Inspector, Inbox, Run history, and Run log can each collapse to a heading. Widths, the bottom-stack height, and which sections are collapsed are stored in local storage on this PC. They are not stored in the workflow file.
 
 ## Vision
 
@@ -287,6 +287,16 @@ The toolbar cap is **Token budget**, a positive integer. After each agent, Swarm
 A missing token count is not stored as 0 and does not cancel later nodes. Dollar cost is still stored and shown when `getUsage()` returns `cost`. Until then the history line stays `cost pending`. A missing cost does not cancel the run. `budgetUsd` on an already saved workflow is dropped when the file is read.
 
 Why: the manual test stopped the second agent with `Stopped for the budget: the cost is still pending.` The SDK had reported token usage and had not sent `cost`. Waiting on dollars cancelled the swarm. Tokens are the number that actually arrives.
+
+### D17 — The splitter follows the pointer, and collapse gives the space back
+
+Date: 2026-10-04. Status: accepted.
+
+The handle on the top of the stack under the canvas moves with the pointer. Dragging it down makes the canvas taller and that stack shorter. Dragging it up makes the stack taller, and it stops while the header and a strip of the canvas are still visible.
+
+Collapsed **Nodes** and **Inspector** are a narrow icon rail. The heading text is not left behind. Collapsing **Inbox**, **Run history**, or **Run log** removes that section's share of the stack. The stack does not keep the empty area. The **Run history** collapse control is on the right of its row, same as **Inbox** and **Run log**.
+
+Why: the first layout grew the stack when the handle moved down, so the handle ran away from the pointer. It could cover the header. A collapsed side panel still showed its title, and a collapsed section under the canvas left the old gap in place. The history control sat beside the title.
 
 ## Conventions
 
@@ -1263,8 +1273,8 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **In scope.**
 
-- A collapse control on **Nodes**, **Inspector**, **Inbox**, **Run history**, and **Run log**. Collapsed, only that section's heading stays. Expanding shows it again. **Cursor connection** already folds; leave that control as it is.
-- A drag handle on the right edge of **Nodes**, the left edge of **Inspector**, and the top edge of the stack under the canvas. Dragging changes the palette width, the inspector width, or how tall that bottom stack is compared with the canvas. A panel cannot be dragged down to nothing; collapsing is how it disappears.
+- A collapse control on **Nodes**, **Inspector**, **Inbox**, **Run history**, and **Run log**. **Nodes** and **Inspector** collapse to an icon rail (decision D17). The sections under the canvas collapse to a heading, and that share of the stack goes back to the canvas. **Cursor connection** already folds; leave that control as it is.
+- A drag handle on the right edge of **Nodes**, the left edge of **Inspector**, and the top edge of the stack under the canvas. The handle follows the pointer (decision D17). Dragging the bottom handle down makes the canvas taller. Dragging it up makes the stack taller, and it stops before the header. A panel cannot be dragged down to nothing; collapsing is how it disappears.
 - The canvas fills the space a collapsed or narrowed panel gives up.
 - Widths, the bottom-stack height, and which sections are collapsed are remembered on this PC. They are not stored in the workflow file.
 - Stable `data-testid` values: `collapse-palette`, `collapse-inspector`, `collapse-inbox`, `collapse-history`, `collapse-run-log`, `resize-palette`, `resize-inspector`, `resize-bottom`.
@@ -1285,15 +1295,15 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
 2. From the **Nodes** list, drag **Agent** onto the canvas three times. The cards read **Agent**, **Agent 2**, and **Agent 3**. The canvas is the area between **Nodes** and **Inspector**.
-3. On the **Nodes** heading, click the collapse control. The node buttons disappear. The canvas grows to the left. The **Nodes** heading is still visible.
-4. Click that control again. The node buttons are back.
+3. On the **Nodes** heading, click the collapse control. The node buttons disappear. A narrow rail with a nodes icon remains. The word **Nodes** is not left on that rail. The canvas grows to the left.
+4. Click that icon. The node buttons and the **Nodes** heading are back.
 5. Drag the handle on the right edge of **Nodes** to the left until the list is narrower, then to the right until it is wider. The canvas width changes with it. The list does not disappear.
 6. Click **Agent**. The inspector shows its fields. Drag the handle on the left edge of **Inspector** so the inspector is narrower. The task prompt field is still readable. The canvas grows into the space.
-7. On the **Inspector** heading, click the collapse control. The fields disappear. The canvas grows to the right. The **Inspector** heading stays.
-8. Click that control again. The fields for **Agent** are back.
-9. Under the canvas, **Inbox**, **Run history**, and **Run log** are visible. Drag the handle along the top of that stack downward. The canvas gets shorter and the stack gets taller. Drag it upward. The canvas gets taller. The stack does not vanish.
-10. On **Run log**, click the collapse control. The log text is hidden. The **Run log** heading stays. **Inbox** and **Run history** stay open.
-11. On **Run history** and **Inbox**, click each collapse control. Only their headings remain. The canvas is most of the window.
+7. On the **Inspector** heading, click the collapse control. The fields disappear. A narrow rail with an inspector icon remains. The word **Inspector** is not left on that rail. The canvas grows to the right.
+8. Click that icon. The fields for **Agent** are back.
+9. Under the canvas, **Inbox**, **History**, and **Run log** are visible. The collapse control on **History** is on the right, in line with the controls on **Inbox** and **Run log**. Drag the handle along the top of that stack downward. The handle moves down with the pointer. The canvas gets taller and the stack gets shorter. Drag it upward. The stack gets taller and the canvas gets shorter. It stops while the **Swarmy** header and some canvas are still visible. The stack does not vanish.
+10. On **Run log**, click the collapse control. The log text is hidden. The **Run log** heading stays, and its collapse control stays on the right. The empty area that held the log closes. The canvas grows. **Inbox** and **History** stay open.
+11. On **History** and **Inbox**, click each collapse control. Only their headings remain, with the collapse control on the right of each row. There is no tall empty band under the canvas. The canvas is most of the window.
 12. Open **Cursor connection**. It still expands and collapses as before.
 13. Quit the app and run `npm run dev` again. **Nodes** and **Inspector** are the widths you dragged. **Inbox**, **Run history**, and **Run log** are still collapsed. The three agent cards are still on the canvas.
 
@@ -1312,7 +1322,10 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Completion notes.**
 
-- _Empty until the phase agent finishes._
+- **Nodes** and **Inspector** collapse to a 40px icon rail. **Inbox**, **History**, and **Run log** collapse to a heading, and that section's share of the stack is removed so the canvas gets the space. The **History** collapse control is on the right of the row. **Cursor connection** is still the existing disclosure.
+- The bottom handle follows the pointer (decision D17). Dragging it down shortens the stack. Dragging it up makes the stack taller and stops while the header and a strip of canvas remain. The log has more of the stack than **Inbox** or **History**, so collapsing it closes that gap.
+- Layout is stored in `localStorage` under `swarmy.panel-layout` and reloaded with the window. The workflow schema and saved workflow files are unchanged. Phase 16 was not renumbered. Node docs were left as they are: this phase does not change a node type, a handle, or what you can do with a node.
+- `npm run verify` exited 0.
 
 ---
 
