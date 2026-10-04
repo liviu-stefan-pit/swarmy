@@ -3,6 +3,7 @@ import { getNodeType } from "@shared/node-registry";
 import { connectError, type WorkflowConnection } from "@shared/validate-workflow";
 import {
   agentNodeDataSchema,
+  mergeNodeDataSchema,
   plannerNodeDataSchema,
   workflowNodeSchema,
   workflowSchema,
@@ -199,7 +200,21 @@ export const useWorkflowStore = create<WorkflowState>((set, get) => ({
   },
 }));
 
-function withNodePatch(node: WorkflowNode, patch: Partial<AgentNodeData>): WorkflowNode {
+type NodePatch = Partial<AgentNodeData> & { targetBranch?: string };
+
+function withNodePatch(node: WorkflowNode, patch: NodePatch): WorkflowNode {
+  if (node.type === "merge") {
+    const label = patch.label ?? node.data.label;
+    const targetBranch = Object.hasOwn(patch, "targetBranch") ? patch.targetBranch : node.data.targetBranch;
+    return {
+      ...node,
+      data: mergeNodeDataSchema.parse({
+        label,
+        ...(targetBranch ? { targetBranch } : {}),
+      }),
+    };
+  }
+
   if (node.type === "planner") {
     const next: PlannerNodeData = { label: patch.label ?? node.data.label };
     const modelId = Object.hasOwn(patch, "modelId") ? patch.modelId : node.data.modelId;

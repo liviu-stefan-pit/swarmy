@@ -71,7 +71,11 @@ export async function checkoutCommit(cwd: string, sha: string, branch: string): 
   await git(cwd, ["checkout", "-B", `swarm/${safe}`, sha]);
 }
 
-export async function commitReviewedEdits(cwd: string, edits: readonly WorktreeEdit[]): Promise<string[]> {
+export async function commitReviewedEdits(
+  cwd: string,
+  edits: readonly WorktreeEdit[],
+  message = "Approve reviewed diff",
+): Promise<string[]> {
   await ignoreAgentStore(cwd);
   const written: string[] = [];
   for (const edit of edits) {
@@ -97,7 +101,7 @@ export async function commitReviewedEdits(cwd: string, edits: readonly WorktreeE
     "commit.gpgsign=false",
     "commit",
     "-m",
-    "Approve reviewed diff",
+    message,
   ]);
   return written;
 }

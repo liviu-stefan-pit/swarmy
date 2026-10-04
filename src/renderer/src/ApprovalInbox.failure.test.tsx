@@ -12,16 +12,6 @@ vi.mock("./DiffReview", () => ({
 
 it("keeps the inbox on screen when the diff editor fails to load", async () => {
   vi.spyOn(console, "error").mockImplementation(() => undefined);
-  useRunStore.setState({
-    workflowRunning: true,
-    approvals: [
-      {
-        nodeId: "review",
-        summary: "wrote the change",
-        files: [{ path: "README.md", original: "hello\n", modified: "hello world\n" }],
-      },
-    ],
-  });
   useWorkflowStore.setState({
     workflow: {
       id: "diff-review",
@@ -37,6 +27,16 @@ it("keeps the inbox on screen when the diff editor fails to load", async () => {
       ],
       edges: [],
     },
+  });
+  useRunStore.setState({
+    workflowRunning: true,
+    approvals: [
+      {
+        nodeId: "review",
+        summary: "wrote the change",
+        files: [{ path: "README.md", original: "hello\n", modified: "hello world\n" }],
+      },
+    ],
   });
 
   render(<ApprovalInbox />);

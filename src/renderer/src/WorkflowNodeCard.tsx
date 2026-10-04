@@ -69,7 +69,7 @@ export function WorkflowNodeCard({ id, type, data, selected }: NodeProps<Node<Fl
       <header className="flex items-center justify-between gap-2">
         <h3 className="text-sm font-medium">{data.label}</h3>
         <div className="flex items-center gap-2">
-          {type === "agent" || type === "approval" || type === "planner" ? (
+          {type === "agent" || type === "approval" || type === "planner" || type === "merge" ? (
             <span data-testid="node-status" className={`rounded-full px-2 py-0.5 text-xs ${statusClass[status]}`}>
               {status}
             </span>

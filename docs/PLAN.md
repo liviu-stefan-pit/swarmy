@@ -6,7 +6,7 @@ Research that led here is in [docs/research](research). Where those PDFs disagre
 
 ## How to run a phase
 
-1. Find the first phase below whose status is `[ ]`. Skip Phase 15.5 until Phase 15 is `[x]`. Skip Phase 15.6 until Phase 15.5 is `[x]`. Skip Phase 17.5 until Phase 17 is `[x]`.
+1. Find the first phase below whose status is `[ ]`. Skip Phase 15.5 until Phase 15 is `[x]`. Skip Phase 15.6 until Phase 15.5 is `[x]`. Skip Phase 17.5 until Phase 17 is `[x]`. Skip Phase 19.5 until Phase 19 is `[x]`.
 2. Open a **new** Cursor chat (do not continue an old one).
 3. Paste that phase's **Prompt** block, unchanged.
 4. The agent follows `.cursor/skills/start-phase/SKILL.md`, writes failing tests, then implements.
@@ -41,7 +41,8 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 17 | Shared task board | [x] | phase-17 | 2026-10-04 |
 | 17.5 | Token use | [x] | phase-17.5 | 2026-10-04 |
 | 18 | Planner node | [x] | phase-18 | 2026-10-04 |
-| 19 | Merge node | [ ] | | |
+| 19 | Merge node | [x] | phase-19 | 2026-10-04 |
+| 19.5 | Review layout | [ ] | | |
 | 20 | Inputs and MCP | [ ] | | |
 | 21 | Templates and export | [ ] | | |
 | 22 | Triggers and notifications | [ ] | | |
@@ -57,6 +58,7 @@ Write changes and wishes here, in your own words. Phase agents must read this se
 | 2026-10-04 | Use C:\prod\scratch-repo for every test that needs a git repo. | done |
 | 2026-10-04 | I need a way to delete a node I added. A button on the node, or the Delete key. Do this after Phase 15, before Phase 16. | done |
 | 2026-10-04 | I can't resize any panel or section, or collapse it. The screen gets cluttered when I keep adding agents, and a laptop is hard to navigate. Do this after Phase 15.5, before Phase 16. | done |
+| 2026-10-04 | The space under the canvas is too small to read a diff, and resizing it while a run is waiting does not help. Before Phase 20, give the board, inbox, and history their own room. | |
 
 Phase 12's manual test is now that walkthrough. The same rule is in Conventions, so later phases write their manual tests the same way.
 
@@ -1620,8 +1622,38 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 **Manual test.**
 
-1. Run two agents that edit different files, then a merge node. The target branch contains both files.
-2. Run two agents that edit the same line. The inbox shows a conflict and the target branch does not contain a marker.
+This uses two real Cursor agents and `C:\prod\scratch-repo`. Leave **Token budget** empty. The clone must be on `main` with a clean working tree before you start. In PowerShell:
+
+```powershell
+Set-Location C:\prod\scratch-repo
+git checkout main
+git status
+```
+
+`git status` should say the working tree is clean. `README.md` should contain `scratch`. If it does not, stop and say so.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Merge clean` and press Tab. The **Workflows** dropdown should show that name. Leave **Token budget** empty.
+4. From the **Nodes** list, drag **Agent** onto the canvas twice. The cards read **Agent** and **Agent 2**. Drag **Merge** once. The card reads **Merge**. It has a blue **text** input, a red **diff** input, a blue **text** output, and a red **diff** output. The pill reads **idle**. There is no **Run** button on the merge card.
+5. Click **Agent**. In the inspector, set **Workspace mode** to **repo**. A **Repository** field appears. Type `C:\prod\scratch-repo`. In **Task prompt**, paste `Create a file named left.txt whose only line is: from left. Do not edit any other file.`
+6. Click **Agent 2**. Set **Workspace mode** to **repo**. **Repository** should already show `C:\prod\scratch-repo`. In **Task prompt**, paste `Create a file named right.txt whose only line is: from right. Do not edit any other file.`
+7. Click **Merge**. **Target branch** reads `main`. Leave it.
+8. Drag the blue **text** output on **Agent** to the blue **text** input on **Merge**. Then drag the blue **text** output on **Agent 2** to that same **text** input. The first wire is the first branch.
+9. In the toolbar, click **Run**.
+10. The pills on **Agent** and **Agent 2** move to **running**, then **completed**. The **Merge** pill then moves to **running**, then **completed**. Click **Merge**. The **Run log** includes `Merged into main at` and a commit id. The **Inbox** stays **No approvals waiting.**
+11. In PowerShell, from `C:\prod\scratch-repo`, run `Get-Content left.txt` and `Get-Content right.txt`. They are `from left` and `from right`. `git status` is clean. `README.md` still contains `scratch`.
+
+Conflict, still on this clone:
+
+12. Click **New** again. Name it `Merge conflict`. Leave **Token budget** empty.
+13. Drag two **Agent** cards and one **Merge**, the same way as above. Set both agents to **repo** and set **Repository** to `C:\prod\scratch-repo` if it is empty.
+14. On the first agent, set **Task prompt** to `Change the first line of README.md to exactly: left side. Do not edit any other file.`
+15. On the second agent, set **Task prompt** to `Change the first line of README.md to exactly: right side. Do not edit any other file.`
+16. Leave the merge **Target branch** as `main`. Connect the first agent's blue **text** output to the merge **text** input, then the second agent's blue **text** output to that same input.
+17. Click **Run**. Wait until both agent pills read **completed**.
+18. The **Merge** pill reads **waiting**. The **Inbox** lists **Merge**. The summary starts with `Merge conflict`. The file list includes `README.md`. The right-hand side of the diff contains `<<<<<<<` and `|||||||`. Do not click **Approve**. Approving the text while those markers are still there does not pick a side.
+19. In PowerShell, from `C:\prod\scratch-repo`, run `Get-Content README.md`. The file does not contain `<<<<<<<` or `|||||||`. `git status` does not show a merge in progress.
 
 **Prompt.**
 
@@ -1631,6 +1663,65 @@ You are implementing Swarmy Phase 19 — Merge node.
 Follow .cursor/skills/start-phase/SKILL.md, then implement only Phase 19 in docs/PLAN.md.
 Write the tests listed in that phase and show them failing before you write the implementation.
 Never auto-resolve a conflict. Treat diff3 ancestor markers as conflicts.
+When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
+```
+
+**Completion notes.**
+
+- A merge node stores a label and a target branch. Omitting the branch means `main`. The inspector field is **Target branch** (`inspector-target-branch`). The card pill shows the run status. There is no **Run** button on the card.
+- Upstream agents in `repo` mode are merged in incoming-edge order into that branch. Uncommitted edits in an upstream worktree are committed on that agent's `swarm/…` branch first, so the branch contains the agent's files. The clone must be clean. If it is not already on the target branch, Swarmy checks that branch out.
+- A clean step fast-forwards or creates a merge commit. The handoff summary is `Merged into <branch> at <sha>.`, and a downstream prompt receives that summary. A conflict uses diff3 markers (`<<<<<<<`, `|||||||`, `=======`, `>>>>>>>`). The in-progress merge is aborted, so the target commit does not contain markers, and no later branch is merged. The Phase 12 approval interrupt lists the conflicted files. Swarmy does not auto-resolve. **Approve** continues only when the edited text has no conflict markers. Otherwise the node fails with `The conflict is still unresolved.` **Reject** fails the merge.
+- A file that git would merge cleanly is still a conflict when its contents contain a `|||||||` ancestor marker. That merge is reset and the marker does not land on the target.
+- Node docs updated (decision D13): the index, `handles.md` (handles did not change; target branch is a field), and `docs/nodes/merge.md`. No new decision. Phase 20 is unchanged.
+- Opening **New**, or another workflow, clears the previous run's pills and log. A newly dropped agent starts at `idle`. Node ids such as `agent-1` are reused, and they were still carrying the last run's `completed` status.
+- `npm run verify` exited 0.
+
+---
+
+## Phase 19.5 — Review layout
+
+**Goal.** A waiting diff fills a view you can actually read. The board, the inbox, and history each get that room, instead of sharing one short strip under the canvas.
+
+**Why.** Phase 15.6 made the bottom stack resizable, and that is not enough. The stack's default height is about 280px, and Board, Inbox, History, and Run log are all open inside it. The diff editor is fixed at 240px, so dragging the handle does not give the review more lines. A conflict is unreadable.
+
+**In scope.**
+
+- Start in plan mode. Read the Phase 15.6 layout, the approval inbox, and `DiffReview` before changing them. Confirm the layout with the user, then implement. Existing approve, reject, board, history, and panel behavior stays intact.
+- Keep the canvas. Replace the always-on stack of Board, Inbox, History, and Run log with a switcher: one of those views is open at a time and fills the area under the canvas. That area still resizes. Palette and inspector resize stay as Phase 15.6 left them.
+- When an approval is waiting, open the Inbox view. The diff editor uses the height of that view, side by side, instead of a fixed 240px.
+- Collapse still reaches each view, or the switcher replaces those collapse controls. Plan mode picks one, and tests move with it. Do not delete a test to keep the old stack.
+
+**Out of scope.** Changing what a merge or an approval stores. Pushing, pull requests, or new node types. A second window.
+
+**Tests to write first.**
+
+1. With a pending diff and a tall inbox view, the diff editor's height follows that view and is greater than 240px.
+2. Choosing Board hides the diff editor and shows the board. Choosing Inbox brings the diff back.
+3. Approving from that inbox view still sends the edited text.
+
+**Acceptance.** Verify passes.
+
+**Manual test.**
+
+This uses the conflict workflow from Phase 19, on `C:\prod\scratch-repo`. Leave **Token budget** empty. The clone must be on `main` with a clean working tree. If `README.md` still says `left side` from the Phase 19 conflict run, that is fine. The two agents must disagree about the same line.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open the Phase 19 workflow named `Merge conflict`, or build it again: two **repo** agents on `C:\prod\scratch-repo`, then a **Merge** whose **Target branch** is `main`. Connect the first agent's blue **text** output to the merge **text** input, then the second agent's blue **text** output to that same input.
+3. Set the first prompt to `Change the first line of README.md to exactly: left side. Do not edit any other file.` Set the second prompt to `Change the first line of README.md to exactly: right side. Do not edit any other file.` If `README.md` already starts with `left side`, set the first prompt to `Change the first line of README.md to exactly: from the left. Do not edit any other file.` and the second to `Change the first line of README.md to exactly: from the right. Do not edit any other file.`
+4. Click **Run**. Wait until both agent pills read **completed** and **Merge** reads **waiting**.
+5. The view under the canvas is the inbox, and the other sections are not stacked on top of the diff. The diff shows `README.md` side by side, with `<<<<<<<` on the right. You can read many lines without the editor sitting in a short strip.
+6. Drag the resize handle. The diff grows and shrinks with the area. It does not stay locked at a few lines.
+7. Switch to **Board**. The board is visible and the diff is not. Switch to **History**, then back to **Inbox**. The same conflict is still there. Do not click **Approve**.
+8. In PowerShell, from `C:\prod\scratch-repo`, `Get-Content README.md` does not contain `<<<<<<<` or `|||||||`. `git status` does not show a merge in progress.
+
+**Prompt.**
+
+```text
+You are implementing Swarmy Phase 19.5 — Review layout.
+
+Follow .cursor/skills/start-phase/SKILL.md, then implement only Phase 19.5 in docs/PLAN.md.
+Start in plan mode. Research the current bottom stack, the approval inbox, and DiffReview, and confirm the layout before writing code. Do not break approve, reject, the board, history, or the Phase 15.6 palette and inspector resize.
+Write the tests listed in that phase and show them failing before you write the implementation.
 When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
 ```
 

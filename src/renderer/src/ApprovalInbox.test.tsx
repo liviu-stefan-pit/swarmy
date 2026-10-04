@@ -24,17 +24,6 @@ afterEach(() => {
 });
 
 beforeEach(() => {
-  useRunStore.setState({
-    workflowRunning: true,
-    approvals: [
-      {
-        nodeId: "review",
-        summary: "wrote the change",
-        workspacePath: "C:\\wt\\writer",
-        files: [{ path: "README.md", original: "hello\n", modified: "hello world\n" }],
-      },
-    ],
-  });
   useWorkflowStore.setState({
     workflow: {
       id: "diff-review",
@@ -50,6 +39,17 @@ beforeEach(() => {
       ],
       edges: [],
     },
+  });
+  useRunStore.setState({
+    workflowRunning: true,
+    approvals: [
+      {
+        nodeId: "review",
+        summary: "wrote the change",
+        workspacePath: "C:\\wt\\writer",
+        files: [{ path: "README.md", original: "hello\n", modified: "hello world\n" }],
+      },
+    ],
   });
 });
 

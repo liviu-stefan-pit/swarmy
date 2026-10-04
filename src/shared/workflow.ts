@@ -74,6 +74,11 @@ export const plannerNodeDataSchema = z.strictObject({
   folderPath: z.string().min(1).optional(),
 });
 
+export const mergeNodeDataSchema = z.strictObject({
+  label: z.string().min(1),
+  targetBranch: z.string().min(1).default("main"),
+});
+
 export const workflowNodeSchema = z.discriminatedUnion("type", [
   workflowNode("agent", agentNodeDataSchema),
   workflowNode("approval", labelDataSchema),
@@ -81,7 +86,7 @@ export const workflowNodeSchema = z.discriminatedUnion("type", [
   workflowNode("folderInput", labelDataSchema),
   workflowNode("textInput", labelDataSchema),
   workflowNode("mcp", labelDataSchema),
-  workflowNode("merge", labelDataSchema),
+  workflowNode("merge", mergeNodeDataSchema),
   workflowNode("planner", plannerNodeDataSchema),
 ]);
 
@@ -122,6 +127,7 @@ export type WorkspaceMode = z.infer<typeof workspaceModeSchema>;
 export type LabelNodeData = z.infer<typeof labelDataSchema>;
 export type AgentNodeData = z.infer<typeof agentNodeDataSchema>;
 export type PlannerNodeData = z.infer<typeof plannerNodeDataSchema>;
+export type MergeNodeData = z.infer<typeof mergeNodeDataSchema>;
 export type WorkflowNode = z.infer<typeof workflowNodeSchema>;
 export type WorkflowEdge = z.infer<typeof workflowEdgeSchema>;
 export type Workflow = z.infer<typeof workflowSchema>;

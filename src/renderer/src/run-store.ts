@@ -369,3 +369,23 @@ function errorText(error: unknown): string {
   const wrapped = message.match(/^Error invoking remote method '[^']+': Error: ([\s\S]*)$/);
   return wrapped?.[1] ?? message;
 }
+
+let seenWorkflowId = useWorkflowStore.getState().workflow.id;
+useWorkflowStore.subscribe((state) => {
+  if (state.workflow.id === seenWorkflowId) {
+    return;
+  }
+  seenWorkflowId = state.workflow.id;
+  useRunStore.setState({
+    statusByNode: {},
+    logsByNode: {},
+    log: "",
+    workspacePath: null,
+    activeNodeId: null,
+    unfinishedThreadId: null,
+    approvals: [],
+    tasks: [],
+    plannerWorkers: [],
+    budgetMessage: "",
+  });
+});

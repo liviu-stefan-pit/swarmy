@@ -29,6 +29,7 @@ import type { TaskBoard } from "./task-board";
 import { openRunCatalog, type RunCatalog } from "./run-catalog";
 import type { AgentRuntime, RuntimeCustomTool, RuntimeMcpServer, SteerAck } from "./runtime";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
+import { commitResolution, mergeBranch, prepareMergeTarget } from "./merge-branches";
 import { checkoutCommit, collectWorktreeDiff, commitReviewedEdits, readHeadSha, safeRelative } from "./worktree-diff";
 import type { AgentWorkspace, WorkspaceManager } from "./workspace-manager";
 
@@ -724,6 +725,10 @@ async function executeNode(
     return executePlanner(input, workflow, node, state);
   }
 
+  if (node.type === "merge") {
+    return executeMerge(input, workflow, node, parents, state);
+  }
+
   if (node.type !== "agent") {
     const handoff: Handoff = {
       kind: "unstructured",
@@ -811,6 +816,99 @@ async function executeApproval(
     feedback,
     routes: { [node.id]: "reject" },
   };
+}
+
+async function executeMerge(
+  input: RunContext,
+  workflow: Workflow,
+  node: Extract<WorkflowNode, { type: "merge" }>,
+  parents: readonly string[],
+  state: GraphValues,
+): Promise<NodeUpdate> {
+  const targetBranch = node.data.targetBranch;
+  const repositoryPath = workflow.repositoryPath?.trim();
+  if (!repositoryPath) {
+    return failedNode(input, node.id, "Merge needs the workflow's git repository.");
+  }
+
+  const branches = parents.flatMap((parentId) => {
+    const snapshot = state.snapshots?.[parentId];
+    if (!snapshot || snapshot.status !== "completed" || !snapshot.branch) {
+      return [];
+    }
+    return [{ branch: snapshot.branch, workspacePath: snapshot.workspacePath }];
+  });
+  if (branches.length === 0) {
+    return failedNode(input, node.id, "The merge has no upstream branches.");
+  }
+
+  input.onUpdate?.({ nodeId: node.id, status: "running", log: "", workspacePath: repositoryPath });
+  try {
+    for (const item of branches) {
+      if (!item.workspacePath) {
+        continue;
+      }
+      await commitReviewedEdits(item.workspacePath, [], "Swarmy agent changes");
+    }
+    await prepareMergeTarget(repositoryPath, targetBranch);
+
+    for (const item of branches) {
+      const outcome = await mergeBranch(repositoryPath, item.branch);
+      if (outcome.status === "merged") {
+        continue;
+      }
+      const names = outcome.files.map((file) => file.path).join(", ");
+      const summary = `Merge conflict in ${names}. Nothing past this point was merged into ${targetBranch}.`;
+      input.onUpdate?.({
+        nodeId: node.id,
+        status: "waiting",
+        log: summary,
+        files: outcome.files,
+        workspacePath: repositoryPath,
+      });
+      const raw = interrupt({
+        nodeId: node.id,
+        summary,
+        files: outcome.files,
+        workspacePath: repositoryPath,
+      });
+      const parsed = resumeDecisionSchema.safeParse(raw);
+      if (!parsed.success) {
+        return failedNode(input, node.id, "The approval decision was not understood.");
+      }
+      if (parsed.data.action === "reject") {
+        const reason = parsed.data.reason.trim();
+        return failedNode(input, node.id, reason.length > 0 ? `The merge was rejected: ${reason}` : "The merge was rejected.");
+      }
+      await commitResolution(repositoryPath, parsed.data.files ?? []);
+    }
+
+    const sha = await readHeadSha(repositoryPath);
+    if (!sha) {
+      return failedNode(input, node.id, "The merge did not produce a commit.");
+    }
+    const summary = `Merged into ${targetBranch} at ${sha}.`;
+    const handoff: Handoff = { kind: "unstructured", summary, files: [], blockers: [] };
+    input.onUpdate?.({ nodeId: node.id, status: "completed", log: summary, workspacePath: repositoryPath });
+    return {
+      snapshots: {
+        [node.id]: {
+          status: "completed",
+          handoff,
+          commitSha: sha,
+          branch: targetBranch,
+          repositoryPath,
+          workspacePath: repositoryPath,
+        },
+      },
+    };
+  } catch (error) {
+    if (isGraphInterrupt(error)) {
+      throw error;
+    }
+    const message = error instanceof Error && error.message ? error.message : "The merge failed";
+    return failedNode(input, node.id, message);
+  }
 }
 
 async function executeAgent(
@@ -1515,6 +1613,12 @@ function combinedHandoff(upstream: readonly NodeSnapshot[], summary: string): Ha
     files: upstream.flatMap((snapshot) => snapshot.handoff.files),
     blockers: upstream.flatMap((snapshot) => snapshot.handoff.blockers),
   };
+}
+
+function failedNode(input: RunContext, nodeId: string, message: string): NodeUpdate {
+  const handoff: Handoff = { kind: "unstructured", summary: message, files: [], blockers: [] };
+  input.onUpdate?.({ nodeId, status: "failed", log: message });
+  return { snapshots: { [nodeId]: { status: "failed", handoff } } };
 }
 
 function failedApproval(input: RunContext, nodeId: string, message: string, count?: number): NodeUpdate {

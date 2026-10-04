@@ -2,6 +2,7 @@ import { getNodeType } from "@shared/node-registry";
 import {
   workspaceModeSchema,
   type AgentNodeData,
+  type MergeNodeData,
   type PlannerNodeData,
   type WorkflowNode,
 } from "@shared/workflow";
@@ -90,12 +91,14 @@ export function NodeInspector() {
   );
 }
 
+type InspectorPatch = Partial<AgentNodeData> & { targetBranch?: string };
+
 function NodeFields({
   node,
   onChange,
 }: {
   node: WorkflowNode;
-  onChange: (patch: Partial<AgentNodeData>) => void;
+  onChange: (patch: InspectorPatch) => void;
 }) {
   const definition = getNodeType(node.type);
 
@@ -116,7 +119,38 @@ function NodeFields({
       </label>
       {node.type === "agent" ? <AgentFields data={node.data} onChange={onChange} /> : null}
       {node.type === "planner" ? <PlannerFields data={node.data} onChange={onChange} /> : null}
+      {node.type === "merge" ? <MergeFields data={node.data} onChange={onChange} /> : null}
     </div>
+  );
+}
+
+function MergeFields({
+  data,
+  onChange,
+}: {
+  data: MergeNodeData;
+  onChange: (patch: InspectorPatch) => void;
+}) {
+  return (
+    <>
+      <label className="block space-y-1 text-xs text-zinc-400">
+        <span>Target branch</span>
+        <input
+          data-testid="inspector-target-branch"
+          className={fieldClass}
+          value={data.targetBranch}
+          placeholder="main"
+          onChange={(event) => {
+            const targetBranch = event.target.value.trim();
+            onChange({ targetBranch: targetBranch.length > 0 ? targetBranch : "main" });
+          }}
+        />
+      </label>
+      <p className="text-xs text-zinc-500">
+        Upstream repo branches merge into this branch, one at a time. A conflict stops in the inbox and is not resolved
+        for you.
+      </p>
+    </>
   );
 }
 

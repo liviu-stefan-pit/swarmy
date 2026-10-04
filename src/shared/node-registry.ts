@@ -109,7 +109,7 @@ export const nodeTypes: readonly NodeTypeDefinition[] = [
   defineNode({
     type: "merge",
     label: "Merge",
-    description: "Joins parallel text or diffs into one result.",
+    description: "Merges upstream repo branches into a target branch, one at a time. A conflict stops for review.",
     inputs: [
       { id: "text", type: "text", label: "Text" },
       { id: "diff", type: "diff", label: "Diff" },
