@@ -360,6 +360,15 @@ function WorkflowToolbar({
 }) {
   const workflowId = useWorkflowStore((state) => state.workflow.id);
   const workflowName = useWorkflowStore((state) => state.workflow.name);
+  const budgetTokens = useWorkflowStore((state) => state.workflow.budgetTokens);
+  const [budgetDraft, setBudgetDraft] = useState({
+    id: workflowId,
+    value: budgetTokens === undefined ? "" : String(budgetTokens),
+  });
+  if (budgetDraft.id !== workflowId) {
+    setBudgetDraft({ id: workflowId, value: budgetTokens === undefined ? "" : String(budgetTokens) });
+  }
+  const budgetValue = budgetDraft.id === workflowId ? budgetDraft.value : budgetTokens === undefined ? "" : String(budgetTokens);
   const [draftState, setDraftState] = useState({ id: workflowId, value: workflowName });
   if (draftState.id !== workflowId) {
     setDraftState({ id: workflowId, value: workflowName });
@@ -424,6 +433,35 @@ function WorkflowToolbar({
             </option>
           ))}
         </select>
+      </label>
+      <label className="flex items-center gap-2 text-sm text-zinc-300">
+        Token budget
+        <input
+          data-testid="workflow-budget"
+          aria-label="Token budget"
+          value={budgetValue}
+          placeholder="none"
+          disabled={busy}
+          className="w-24 rounded border border-zinc-700 bg-zinc-900 px-2 py-1 text-zinc-50 disabled:opacity-50"
+          onChange={(event) => {
+            setBudgetDraft({ id: workflowId, value: event.target.value });
+          }}
+          onBlur={() => {
+            const trimmed = budgetValue.trim();
+            if (trimmed.length === 0) {
+              useWorkflowStore.getState().setBudget(null);
+              setBudgetDraft({ id: workflowId, value: "" });
+              return;
+            }
+            const parsed = Number(trimmed);
+            if (!Number.isInteger(parsed) || parsed <= 0) {
+              setBudgetDraft({ id: workflowId, value: budgetTokens === undefined ? "" : String(budgetTokens) });
+              return;
+            }
+            useWorkflowStore.getState().setBudget(parsed);
+            setBudgetDraft({ id: workflowId, value: String(parsed) });
+          }}
+        />
       </label>
       <RunWorkflowButton />
       <button

@@ -3,6 +3,9 @@ import {
   approvalDecisionSchema,
   nodeRunStatusSchema,
   pendingApprovalSchema,
+  runHistoryDetailSchema,
+  runHistoryEntrySchema,
+  runRecordStatusSchema,
   runUpdateSchema,
 } from "./runs";
 import { workflowSchema, workspaceModeSchema } from "./workflow";
@@ -136,6 +139,8 @@ export const runStartMessageSchema = z.object({
   writePaths: z.array(z.string().min(1)).optional(),
   sandboxEnabled: z.boolean().optional(),
   autoReview: z.boolean().optional(),
+  workflowId: z.string().min(1).optional(),
+  budgetTokens: z.number().int().positive().optional(),
 });
 
 export const runUpdateMessageSchema = runUpdateSchema.extend({
@@ -192,6 +197,46 @@ export const workflowRunDoneMessageSchema = z.object({
   type: z.literal("workflow.runDone"),
   id: z.string().min(1),
   statuses: z.record(z.string(), nodeRunStatusSchema),
+  runStatus: runRecordStatusSchema.optional(),
+  budgetNote: z.string().min(1).optional(),
+});
+
+export const runHistoryMessageSchema = z.object({
+  type: z.literal("run.history"),
+  id: z.string().min(1),
+  workflowId: z.string().min(1),
+});
+
+export const runHistoryResultMessageSchema = z.object({
+  type: z.literal("run.historyResult"),
+  id: z.string().min(1),
+  runs: z.array(runHistoryEntrySchema),
+});
+
+export const runHistoryOpenMessageSchema = z.object({
+  type: z.literal("run.historyOpen"),
+  id: z.string().min(1),
+  threadId: z.string().min(1),
+});
+
+export const runHistoryDetailResultSchema = z.object({
+  id: z.string().min(1),
+  detail: runHistoryDetailSchema,
+});
+
+export const runHistoryOpenResultMessageSchema = runHistoryDetailResultSchema.extend({
+  type: z.literal("run.historyOpenResult"),
+});
+
+export const runHistoryRefreshMessageSchema = z.object({
+  type: z.literal("run.historyRefresh"),
+  id: z.string().min(1),
+  threadId: z.string().min(1),
+  apiKey: z.string().min(1),
+});
+
+export const runHistoryRefreshResultMessageSchema = runHistoryDetailResultSchema.extend({
+  type: z.literal("run.historyRefreshResult"),
 });
 
 export const workflowCancelMessageSchema = z.object({
@@ -279,6 +324,12 @@ export const engineMessageSchema = z.discriminatedUnion("type", [
   runFailedMessageSchema,
   workflowRunMessageSchema,
   workflowRunDoneMessageSchema,
+  runHistoryMessageSchema,
+  runHistoryResultMessageSchema,
+  runHistoryOpenMessageSchema,
+  runHistoryOpenResultMessageSchema,
+  runHistoryRefreshMessageSchema,
+  runHistoryRefreshResultMessageSchema,
   workflowCancelMessageSchema,
   workflowCancelResultMessageSchema,
   runUnfinishedMessageSchema,

@@ -84,14 +84,24 @@ export const workflowEdgeSchema = z.strictObject({
   targetHandle: z.string().min(1),
 });
 
-export const workflowSchema = z.strictObject({
+const workflowObjectSchema = z.strictObject({
   id: z.string().min(1),
   name: z.string().min(1),
   viewport: viewportSchema,
   nodes: z.array(workflowNodeSchema),
   edges: z.array(workflowEdgeSchema),
   repositoryPath: z.string().min(1).optional(),
+  budgetTokens: z.number().int().positive().optional(),
 });
+
+export const workflowSchema = z.preprocess((value) => {
+  if (!value || typeof value !== "object" || Array.isArray(value) || !("budgetUsd" in value)) {
+    return value;
+  }
+  const record = { ...(value as Record<string, unknown>) };
+  delete record.budgetUsd;
+  return record;
+}, workflowObjectSchema);
 
 export type HandleDirection = z.infer<typeof handleDirectionSchema>;
 export type HandleDataType = z.infer<typeof handleDataTypeSchema>;

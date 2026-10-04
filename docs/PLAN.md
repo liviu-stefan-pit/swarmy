@@ -6,7 +6,7 @@ Research that led here is in [docs/research](research). Where those PDFs disagre
 
 ## How to run a phase
 
-1. Find the first phase below whose status is `[ ]`.
+1. Find the first phase below whose status is `[ ]`. Skip Phase 15.5 until Phase 15 is `[x]`.
 2. Open a **new** Cursor chat (do not continue an old one).
 3. Paste that phase's **Prompt** block, unchanged.
 4. The agent follows `.cursor/skills/start-phase/SKILL.md`, writes failing tests, then implements.
@@ -34,7 +34,8 @@ Status marks: `[ ]` not started, `[~]` in progress, `[x]` done and tagged.
 | 12 | Approval gates | [x] | phase-12 | 2026-10-04 |
 | 13 | Diff review | [x] | phase-13 | 2026-10-04 |
 | 14 | Guardrails | [x] | phase-14 | 2026-10-04 |
-| 15 | Observability and budgets | [ ] | | |
+| 15 | Observability and budgets | [x] | phase-15 | 2026-10-04 |
+| 15.5 | Delete a node | [ ] | | |
 | 16 | Time travel | [ ] | | |
 | 17 | Shared task board | [ ] | | |
 | 18 | Planner node | [ ] | | |
@@ -52,10 +53,13 @@ Write changes and wishes here, in your own words. Phase agents must read this se
 | --- | --- | --- |
 | 2026-10-04 | Always make the manual test detailed enough that I can go through the app step by step without worrying I missed something. | done |
 | 2026-10-04 | Use C:\prod\scratch-repo for every test that needs a git repo. | done |
+| 2026-10-04 | I need a way to delete a node I added. A button on the node, or the Delete key. Do this after Phase 15, before Phase 16. | done |
 
 Phase 12's manual test is now that walkthrough. The same rule is in Conventions, so later phases write their manual tests the same way.
 
 Phase 13 initialized `C:\prod\scratch-repo` with a committed `README.md` that contains `scratch`, and its manual test uses that path. The same path is in Conventions, so later phases use it for real agent runs that need a repository.
+
+Node deletion is Phase 15.5. Phase 15 does not build it. Phase 5 left the Delete key off on purpose; 15.5 turns it back on, with a button on the card.
 
 ## Vision
 
@@ -259,6 +263,26 @@ Date: 2026-10-04. Status: accepted. Supersedes the agent input list in D12.
 An agent has a `diff` input, same data type as its `diff` output. An approval's `diff` output can connect to the next agent. D12 did not give the agent a `diff` input, so Agent → approval → agent could not be saved. The type list is unchanged: `text`, `file`, `folder`, `diff`, and `mcp`.
 
 Why: Phase 12's manual test is an agent, then an approval, then another agent. The approval passes the upstream diff along.
+
+### D15 — A set budget waits for cost, and cents are not rounded away
+
+Date: 2026-10-04. Status: accepted.
+
+When a workflow has a budget, the next agent does not start while the previous agent's dollar cost is still missing. The run is `budget_exceeded` and the screen says `Stopped for the budget: the cost is still pending.` The missing cost is not stored as 0. A reported `chargedCents` of 0 is a real zero and stays under the budget.
+
+The comparison is `spentCents > budgetUsd * 100`, without rounding to whole cents. `$0.001` is 0.1 cents.
+
+Why: a manual run with budget `0.001` finished both agents while the cost line still said `cost pending`. Pending spend was treated as 0, and `Math.round(0.001 * 100)` is 0, so the check was `0 > 0`.
+
+### D16 — The workflow cap is tokens, not dollars
+
+Date: 2026-10-04. Status: accepted. Supersedes the pending-cost stop in D15.
+
+The toolbar cap is **Token budget**, a positive integer. After each agent, Swarmy adds the `totalTokens` values the SDK reported. If that sum is over the cap, later nodes are cancelled and the run is `budget_exceeded`. The screen says `Budget exceeded.`
+
+A missing token count is not stored as 0 and does not cancel later nodes. Dollar cost is still stored and shown when `getUsage()` returns `cost`. Until then the history line stays `cost pending`. A missing cost does not cancel the run. `budgetUsd` on an already saved workflow is dropped when the file is read.
+
+Why: the manual test stopped the second agent with `Stopped for the budget: the cost is still pending.` The SDK had reported token usage and had not sent `cost`. Waiting on dollars cancelled the swarm. Tokens are the number that actually arrives.
 
 ## Conventions
 
@@ -1110,7 +1134,7 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 - Persist each run: status, started/ended, per-node transcript summary, token usage from `run.usage`.
 - After a real run, call `agent.getUsage()` and store `chargedCents` when present. Cost can arrive late; show "cost pending" rather than zero when `cost` is absent.
 - Run history panel. Opening a past run shows the log you saw live.
-- Optional workflow budget in USD. When the summed known cost exceeds it, cancel the run and mark it `budget_exceeded`.
+- Optional workflow token budget. When the summed reported token usage exceeds it, cancel the run and mark it `budget_exceeded`. Dollar cost is still shown, and a missing cost stays `cost pending` (decision D16).
 
 **Out of scope.** Charts beyond a simple totals line. Team billing admin.
 
@@ -1118,15 +1142,30 @@ When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commi
 
 1. A fake run with usage `{ totalTokens: 10 }` stores 10 on the node row.
 2. Missing cost is stored as pending, not 0.
-3. A budget of 1 cent, with a reported cost of 2 cents, cancels the remaining nodes.
+3. A token budget of 5, with a reported usage of 8 tokens and no dollar cost, cancels the remaining nodes. A missing cost does not cancel the next node when the token total is still under the budget.
 
 **Acceptance.** Verify passes.
 
 **Manual test.**
 
-1. Run one real agent. History shows the transcript and a token total.
-2. If cost is still pending, wait and refresh. Either a dollar amount or a still-pending label is fine; a fake `$0.00` is not.
-3. Set a budget of `$0.01` and run a two-agent line. The run stops with a budget message.
+This uses a real Cursor agent. The repository is `C:\prod\scratch-repo`. Leave **Token budget** empty for the first run. The hook from Phase 14 is not part of this test, so leave **Guardrails** unchecked.
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. Open **Cursor connection** at the bottom. If it says **Key saved**, leave it. If it says **No key saved**, paste the API key, click **Save**, and wait until it says **Key saved**.
+3. In the toolbar, click **New**. In **Name**, type `Observability` and press Tab. The **Workflows** dropdown should show that name. **Token budget** is empty and its placeholder is `none`.
+4. From the **Nodes** list, drag **Agent** onto the canvas. The card reads **Agent**.
+5. Click the **Agent** card. In the inspector, set **Workspace mode** to `repo`. A **Repository** field appears. Paste `C:\prod\scratch-repo`. Set **Task prompt** to `Reply with the single word alpha. Do not edit any files.`
+6. Leave **Token budget** empty. In the toolbar, click **Run**. Do not click **Run** on the card.
+7. The pill reads **queued**, then **running**, then **completed**. The **Run log** includes `alpha`. It does not say `Budget exceeded.`
+8. Open the **Run history** dropdown under the canvas. Choose the first run under **Open a past run** (the newest). The log includes `alpha`. The token line is a count such as `12 tokens`, or it reads `tokens unavailable` if Cursor did not report usage. It does not read `0 tokens` unless Cursor reported zero. The cost line reads `cost pending` or a dollar amount such as `$0.02`. It does not read `$0.00` while the cost is still unreported.
+9. Click **Refresh cost**. Wait until the cost line updates. `cost pending` may stay, or it may become a dollar amount. Refresh must not replace `cost pending` with `$0.00` on its own.
+10. From the **Nodes** list, drag a second **Agent** onto the canvas. The card reads **Agent 2**.
+11. Connect the blue **Text** dots only. On **Agent**, drag the blue **Text** dot on the right to the blue **Text** dot on the left of **Agent 2**. You should see one edge. If a red message appears at the top of the canvas, that wire did not stick. Drag from the blue dot again.
+12. Click **Agent 2**. Leave **Workspace mode** unset. Set **Task prompt** to `Reply with the single word beta. Do not edit any files.`
+13. Click the **Token budget** box, type `1000`, and press Tab. The box keeps `1000`.
+14. In the toolbar, click **Run** again.
+15. **Agent** goes **running**, then **completed**. **Agent 2** goes **cancelled** and does not stay **running**. The amber line above the run log is `Budget exceeded.` The **Run log** for **Agent 2** does not include `beta`. It does not say `Stopped for the budget: the cost is still pending.`
+16. Open that run in **Run history**. The token line is a count above `1000`. The cost line is a dollar amount or `cost pending`. It does not read `$0.00` while the cost is still unreported. The log for **Agent 2** does not include `beta`.
 
 **Prompt.**
 
@@ -1136,6 +1175,68 @@ You are implementing Swarmy Phase 15 — Observability and budgets.
 Follow .cursor/skills/start-phase/SKILL.md, then implement only Phase 15 in docs/PLAN.md.
 Write the tests listed in that phase and show them failing before you write the implementation.
 Do not invent a zero cost when the SDK has not reported one.
+When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
+```
+
+**Completion notes.**
+
+- Each workflow run stores status, started and ended times, and a row per node: the log shown live, `totalTokens` from `run.usage` when the SDK reported it, and `chargedCents` from `agent.getUsage()` when that cost object is present. A missing cost is stored as pending. A missing token count is left unset. Neither is written as zero.
+- **History** lists past runs. Opening one shows that log, the token total, and either a dollar amount or `cost pending`. **Refresh cost** calls `Agent.getUsage` again and fills in `chargedCents` only when the SDK returns a cost.
+- **Token budget** is optional on the workflow. After each agent, reported `totalTokens` values are added. If the sum is over the budget, later nodes are cancelled, the run status is `budget_exceeded`, and the screen says `Budget exceeded.` A missing token count is not treated as zero and does not cancel later nodes. Dollar cost is still stored when `getUsage()` returns it, and stays `cost pending` otherwise. A missing cost does not cancel the run. A saved `budgetUsd` is dropped on load. Decision D16.
+- Node docs updated (decision D13): `docs/nodes/agent.md`, the index, and a note in `handles.md` that handles did not change. No later phase prompt changed.
+- The manual test above is the step-by-step walkthrough, and it uses `C:\prod\scratch-repo`. The confirmed run showed `40018 tokens`, `cost pending`, and `Budget exceeded.`, and the second agent did not run.
+- `npm run verify` exited 0.
+
+---
+
+## Phase 15.5 — Delete a node
+
+**Start after.** Phase 15 is tagged `phase-15`. If that tag is missing, stop. Do not implement this phase inside Phase 15.
+
+**Goal.** Remove one node from the canvas, and the wires attached to it, without deleting the workflow.
+
+**Why.** Phase 5 set `deleteKeyCode` to null, so Backspace and Delete do nothing. There is no remove control on a card. A node added by mistake stays until you throw away the whole workflow.
+
+**In scope.**
+
+- A **Delete** button on every node card, with `data-testid="delete-node"`. It removes that node.
+- Delete and Backspace remove the selected node when focus is on the canvas. They do nothing when focus is in a text field, including the inspector prompts, the write-paths box, the steering box, and the approval reason.
+- Edges whose source or target is that node are removed with it. The other nodes stay. The selection clears. Autosave stores the graph without that node.
+- The button is disabled, and the keys do nothing, while that node is `running` or a workflow run is in progress.
+
+**Out of scope.** Undo. Deleting a whole workflow (the toolbar **Delete** already does that). Deleting a run from history (Phase 15).
+
+**Tag.** `phase-15.5`. Do not renumber Phase 16.
+
+**Tests to write first.**
+
+1. Removing a node drops it and every edge that used it. The other nodes remain.
+2. Delete and Backspace, while the task prompt is focused, leave the node in place.
+3. The card's **Delete** button removes that node.
+
+**Acceptance.** Verify passes.
+
+**Manual test.**
+
+1. In the Swarmy repo, run `npm run dev`. Wait until the footer reads **Engine connected**.
+2. In the toolbar, click **New**. In **Name**, type `Delete node` and press Enter. The **Workflows** dropdown should show that name.
+3. From the **Nodes** list, drag **Text** onto the canvas, then **Agent** to its right. The cards read **Text** and **Agent**.
+4. Connect them. On **Text**, drag the blue **Text** dot on the right to the blue **Text** dot on the left of **Agent**. You should see one edge.
+5. Click **Agent**. In the inspector, click in **Task prompt** and type `hello`. Press Delete, then Backspace. The **Agent** card is still on the canvas. The word in **Task prompt** changes. The edge is still there.
+6. Click the canvas background so the prompt is no longer focused. Click **Agent** again. Press Delete. The **Agent** card and the edge are gone. **Text** is still there. The inspector says **Select a node.**
+7. Drag **Agent** onto the canvas again. On that card, click **Delete**. The new **Agent** card is gone. **Text** remains.
+8. Quit the app and run `npm run dev` again. Open **Delete node** from **Workflows**. The canvas still has **Text** and does not have those agents.
+
+**Prompt.**
+
+```text
+You are implementing Swarmy Phase 15.5 — Delete a node.
+
+Follow .cursor/skills/start-phase/SKILL.md, then implement only Phase 15.5 in docs/PLAN.md.
+Start only after Phase 15 is tagged phase-15. If it is not, stop.
+Write the tests listed in that phase and show them failing before you write the implementation.
+Delete removes one node and its edges. It does not delete the workflow, and it does not fire while a text field is focused.
+Tag the commit phase-15.5. Do not renumber Phase 16.
 When the work is done, follow .cursor/skills/finish-phase/SKILL.md. Do not commit until I confirm the manual test.
 ```
 

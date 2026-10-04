@@ -3,6 +3,8 @@ import type {
   ApprovalDecision,
   PendingApproval,
   RunDone,
+  RunHistoryDetail,
+  RunHistoryEntry,
   RunStart,
   RunUpdate,
   SteerDelivery,
@@ -38,6 +40,9 @@ export interface SwarmyApi {
     cancelWorkflow(): Promise<void>;
     steer(nodeId: string, text: string): Promise<SteerDelivery>;
     unfinished(workflowId: string): Promise<string | null>;
+    history(workflowId: string): Promise<RunHistoryEntry[]>;
+    openHistory(threadId: string): Promise<RunHistoryDetail>;
+    refreshHistory(threadId: string): Promise<RunHistoryDetail>;
     onUpdate(listener: (update: RunUpdate) => void): () => void;
   };
 }

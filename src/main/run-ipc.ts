@@ -8,6 +8,13 @@ import {
   pendingApprovalSchema,
   runCancelChannel,
   runCancelPayloadSchema,
+  runHistoryChannel,
+  runHistoryDetailSchema,
+  runHistoryEntrySchema,
+  runHistoryListPayloadSchema,
+  runHistoryOpenChannel,
+  runHistoryOpenPayloadSchema,
+  runHistoryRefreshChannel,
   runStartChannel,
   runStartPayloadSchema,
   runSteerChannel,
@@ -48,6 +55,8 @@ export function registerRunIpc(engine: EngineHost): void {
         ...(parsed.workspaceMode ? { workspaceMode: parsed.workspaceMode } : {}),
         ...(parsed.repositoryPath ? { repositoryPath: parsed.repositoryPath } : {}),
         ...(parsed.folderPath ? { folderPath: parsed.folderPath } : {}),
+        ...(parsed.workflowId ? { workflowId: parsed.workflowId } : {}),
+        ...(parsed.budgetTokens !== undefined ? { budgetTokens: parsed.budgetTokens } : {}),
       });
       if (result.type !== "run.done") {
         throw new Error("Unexpected engine response");
@@ -76,7 +85,56 @@ export function registerRunIpc(engine: EngineHost): void {
       if (result.type !== "workflow.runDone") {
         throw new Error("Unexpected engine response");
       }
-      return workflowRunResultSchema.parse({ statuses: result.statuses });
+      return workflowRunResultSchema.parse({
+        statuses: result.statuses,
+        ...(result.runStatus ? { runStatus: result.runStatus } : {}),
+        ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
+      });
+    } catch (error) {
+      throw new Error(scrub(errorText(error), apiKey), { cause: error });
+    }
+  });
+
+  ipcMain.handle(runHistoryChannel, async (_event, payload: unknown) => {
+    const parsed = runHistoryListPayloadSchema.parse(payload);
+    const result = await engine.request({
+      type: "run.history",
+      id: randomUUID(),
+      workflowId: parsed.workflowId,
+    });
+    if (result.type !== "run.historyResult") {
+      throw new Error("Unexpected engine response");
+    }
+    return runHistoryEntrySchema.array().parse(result.runs);
+  });
+
+  ipcMain.handle(runHistoryOpenChannel, async (_event, payload: unknown) => {
+    const parsed = runHistoryOpenPayloadSchema.parse(payload);
+    const result = await engine.request({
+      type: "run.historyOpen",
+      id: randomUUID(),
+      threadId: parsed.threadId,
+    });
+    if (result.type !== "run.historyOpenResult") {
+      throw new Error("Unexpected engine response");
+    }
+    return runHistoryDetailSchema.parse(result.detail);
+  });
+
+  ipcMain.handle(runHistoryRefreshChannel, async (_event, payload: unknown) => {
+    const parsed = runHistoryOpenPayloadSchema.parse(payload);
+    const apiKey = apiKeyForRun();
+    try {
+      const result = await engine.request({
+        type: "run.historyRefresh",
+        id: randomUUID(),
+        threadId: parsed.threadId,
+        apiKey,
+      });
+      if (result.type !== "run.historyRefreshResult") {
+        throw new Error("Unexpected engine response");
+      }
+      return runHistoryDetailSchema.parse(result.detail);
     } catch (error) {
       throw new Error(scrub(errorText(error), apiKey), { cause: error });
     }
@@ -146,7 +204,11 @@ export function registerRunIpc(engine: EngineHost): void {
       if (result.type !== "workflow.runDone") {
         throw new Error("Unexpected engine response");
       }
-      return workflowRunResultSchema.parse({ statuses: result.statuses });
+      return workflowRunResultSchema.parse({
+        statuses: result.statuses,
+        ...(result.runStatus ? { runStatus: result.runStatus } : {}),
+        ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
+      });
     } catch (error) {
       throw new Error(scrub(errorText(error), apiKey), { cause: error });
     }

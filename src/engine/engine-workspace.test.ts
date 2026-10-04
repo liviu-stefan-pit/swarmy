@@ -116,6 +116,7 @@ it("uses a managed git folder when the node does not set a workspace mode", asyn
         return fake.create(request);
       },
       resume: (request) => fake.resume(request),
+      usageForAgent: (apiKey, agentId) => fake.usageForAgent(apiKey, agentId),
     },
     manager,
     posted,
@@ -156,6 +157,9 @@ function recordingRuntime(seen: { cwd: string; status: string; branch: string })
     },
     resume(request) {
       return fake.resume(request);
+    },
+    usageForAgent(apiKey, agentId) {
+      return fake.usageForAgent(apiKey, agentId);
     },
   };
 }

@@ -10,6 +10,7 @@ export function RunLog() {
   const selectedLog = selectedNodeId ? logsByNode[selectedNodeId] : undefined;
   const shown = selectedLog && selectedLog.length > 0 ? selectedLog : log;
   const workspacePath = useRunStore((state) => state.workspacePath);
+  const budgetMessage = useRunStore((state) => state.budgetMessage);
   const steering = selectedNodeId !== null && statusByNode[selectedNodeId] === "running";
   const [draft, setDraft] = useState("");
 
@@ -26,6 +27,11 @@ export function RunLog() {
   return (
     <section className="border-t border-zinc-800 px-4 py-2">
       <h2 className="text-xs font-semibold tracking-wide text-zinc-400 uppercase">Run log</h2>
+      {budgetMessage ? (
+        <p data-testid="budget-message" className="mt-1 text-sm text-amber-300">
+          {budgetMessage}
+        </p>
+      ) : null}
       {workspacePath ? (
         <p className="mt-1 font-mono text-xs text-zinc-400">
           Workspace <span data-testid="workspace-path">{workspacePath}</span>

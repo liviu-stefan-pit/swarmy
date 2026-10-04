@@ -13,6 +13,8 @@ export type AgentNodeStatus = "running" | "completed" | "failed" | "cancelled";
 export interface AgentRunRequest extends CreateAgentRequest {
   prompt: string;
   agentId?: string;
+  /** When a budget is set, poll getUsage briefly so a late cost can still stop the run. */
+  waitForCost?: boolean;
 }
 
 export interface AgentRunOutcome {
@@ -20,6 +22,8 @@ export interface AgentRunOutcome {
   log: string;
   text: string;
   error?: string;
+  totalTokens?: number;
+  chargedCents?: number;
 }
 
 export interface AgentRunUpdate {
@@ -148,9 +152,22 @@ export function startAgentRun(input: {
           publish(event);
           report("running", log);
         }
-        return finish(await follow.wait(), log, report);
+        const followed = await follow.wait();
+        const chargedCents = await reportedCost(agent, input.request.waitForCost === true, () => {
+          note("Waiting for the dollar cost before the next agent.");
+        });
+        return finish(followed, log, report, {
+          totalTokens: addTokens(result.usage?.totalTokens, followed.usage?.totalTokens),
+          chargedCents,
+        });
       }
-      return finish(result, log, report);
+      const chargedCents = await reportedCost(agent, input.request.waitForCost === true, () => {
+        note("Waiting for the dollar cost before the next agent.");
+      });
+      return finish(result, log, report, {
+        totalTokens: result.usage?.totalTokens,
+        chargedCents,
+      });
     } catch (error) {
       settleRun(error instanceof Error ? error : new Error("Run did not start"));
       const message = error instanceof Error && error.message ? error.message : "Run did not start";
@@ -177,25 +194,84 @@ export function startAgentRun(input: {
   }
 }
 
+function costWaitMs(): number {
+  return process.env.VITEST === "true" ? 0 : 2000;
+}
+
+function costWaitAttempts(): number {
+  return process.env.VITEST === "true" ? 1 : 8;
+}
+
+async function reportedCost(
+  agent: Awaited<ReturnType<AgentRuntime["create"]>>,
+  waitForCost: boolean,
+  onWaiting?: () => void,
+): Promise<number | undefined> {
+  const first = await askCost(agent);
+  if (first !== undefined || !waitForCost) {
+    return first;
+  }
+  onWaiting?.();
+  for (let attempt = 0; attempt < costWaitAttempts(); attempt += 1) {
+    await new Promise((resolve) => {
+      setTimeout(resolve, costWaitMs());
+    });
+    const next = await askCost(agent);
+    if (next !== undefined) {
+      return next;
+    }
+  }
+  return undefined;
+}
+
+async function askCost(agent: Awaited<ReturnType<AgentRuntime["create"]>>): Promise<number | undefined> {
+  try {
+    const usage = await agent.getUsage();
+    return usage.chargedCents;
+  } catch {
+    return undefined;
+  }
+}
+
+function addTokens(left: number | undefined, right: number | undefined): number | undefined {
+  if (left === undefined) return right;
+  if (right === undefined) return left;
+  return left + right;
+}
+
+interface RunAccounting {
+  totalTokens?: number;
+  chargedCents?: number;
+}
+
 function finish(
   result: RuntimeRunResult,
   log: string,
   report: (status: AgentNodeStatus, nextLog: string) => void,
+  accounting: RunAccounting,
 ): AgentRunOutcome {
   if (result.status === "error") {
     const message = result.error ?? "Run failed";
     const failedLog = appendLine(log, message);
     report("failed", failedLog);
-    return { status: "failed", log: failedLog, text: result.text, error: message };
+    return account({ status: "failed", log: failedLog, text: result.text, error: message }, accounting);
   }
   if (result.status === "cancelled") {
     report("cancelled", log);
-    return { status: "cancelled", log, text: result.text };
+    return account({ status: "cancelled", log, text: result.text }, accounting);
   }
   const completedLog =
     result.text.length > 0 && !log.includes(result.text) ? appendLine(log, result.text) : log;
   report("completed", completedLog);
-  return { status: "completed", log: completedLog, text: result.text };
+  return account({ status: "completed", log: completedLog, text: result.text }, accounting);
+}
+
+function account(outcome: AgentRunOutcome, accounting: RunAccounting): AgentRunOutcome {
+  return {
+    ...outcome,
+    ...(accounting.totalTokens !== undefined ? { totalTokens: accounting.totalTokens } : {}),
+    ...(accounting.chargedCents !== undefined ? { chargedCents: accounting.chargedCents } : {}),
+  };
 }
 
 function createRequest(request: AgentRunRequest): CreateAgentRequest {

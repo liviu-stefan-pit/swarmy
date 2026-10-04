@@ -10,6 +10,7 @@ import type {
   RuntimeEvent,
   RuntimeModel,
   RuntimeRun,
+  RuntimeCost,
   RuntimeRunResult,
   SteerAck,
 } from "./runtime";
@@ -22,6 +23,9 @@ export interface FakePromptScript {
   hold?: boolean;
   handoff?: Record<string, unknown>;
   steer?: SteerAck;
+  usage?: { totalTokens: number };
+  /** Present only when this script reports a cost, including a real zero. */
+  chargedCents?: number;
 }
 
 export interface FakeRuntimeScript {
@@ -86,12 +90,29 @@ export class FakeRuntime implements AgentRuntime {
     return Promise.resolve(new FakeAgent(this, request.customTools));
   }
 
+  usageForAgent(apiKey: string, agentId: string): Promise<RuntimeCost> {
+    void apiKey;
+    void agentId;
+    return Promise.resolve({});
+  }
+
+  scriptFor(prompt: string): FakePromptScript {
+    return resolveScript(this.script, prompt);
+  }
+
   openRun(prompt: string, customTools?: Record<string, RuntimeCustomTool>): RuntimeRun {
     const script = resolveScript(this.script, prompt);
     this.sentPrompts.push(prompt);
     this.nextRunId += 1;
     return new FakeRun(script, `fake-run-${this.nextRunId}`, prompt, this, customTools);
   }
+}
+
+function withScriptUsage(result: RuntimeRunResult, script: FakePromptScript): RuntimeRunResult {
+  if (!script.usage) {
+    return result;
+  }
+  return { ...result, usage: { totalTokens: script.usage.totalTokens } };
 }
 
 function resolveScript(script: FakeRuntimeScript, prompt: string): FakePromptScript {
@@ -119,6 +140,8 @@ function resolveScript(script: FakeRuntimeScript, prompt: string): FakePromptScr
 class FakeAgent implements RuntimeAgent {
   readonly agentId = "fake-agent";
   private disposed = false;
+  private reportedCost = false;
+  private chargedCents: number | undefined;
 
   constructor(
     private readonly runtime: FakeRuntime,
@@ -126,7 +149,17 @@ class FakeAgent implements RuntimeAgent {
   ) {}
 
   send(prompt: string): Promise<RuntimeRun> {
+    const script = this.runtime.scriptFor(prompt);
+    this.reportedCost = Object.hasOwn(script, "chargedCents");
+    this.chargedCents = script.chargedCents;
     return Promise.resolve(this.runtime.openRun(prompt, this.customTools));
+  }
+
+  getUsage(): Promise<RuntimeCost> {
+    if (!this.reportedCost || this.chargedCents === undefined) {
+      return Promise.resolve({});
+    }
+    return Promise.resolve({ chargedCents: this.chargedCents });
   }
 
   dispose(): Promise<void> {
@@ -188,12 +221,15 @@ export class FakeRun implements RuntimeRun {
     }
     this.runtime.noteFinished(this.prompt);
     if (this.cancelled || this.script.status === "cancelled") {
-      return { status: "cancelled", text: streamed };
+      return withScriptUsage({ status: "cancelled", text: streamed }, this.script);
     }
     if (this.script.status === "error") {
-      return { status: "error", text: streamed, error: this.script.error ?? "Run failed" };
+      return withScriptUsage(
+        { status: "error", text: streamed, error: this.script.error ?? "Run failed" },
+        this.script,
+      );
     }
-    return { status: "finished", text: this.script.result ?? streamed };
+    return withScriptUsage({ status: "finished", text: this.script.result ?? streamed }, this.script);
   }
 
   cancel(): Promise<void> {

@@ -5,8 +5,10 @@ import {
   Cursor,
   CursorSdkError,
   JsonlLocalAgentStore,
+  type AgentUsage,
   type Run,
   type RunResult,
+  type TokenUsage,
   type McpServerConfig,
   type SDKAgent,
   type SDKCustomTool,
@@ -28,6 +30,7 @@ import type {
   RuntimeCustomTool,
   RuntimeEvent,
   RuntimeMcpServer,
+  RuntimeCost,
   RuntimeModel,
   RuntimeRun,
   RuntimeRunResult,
@@ -77,6 +80,13 @@ export class CursorSdkRuntime implements AgentRuntime {
       const systemPrompt = request.systemPrompt?.trim();
       await session.open(systemPrompt ? systemPrompt : undefined);
       return session;
+    });
+  }
+
+  usageForAgent(apiKey: string, agentId: string): Promise<RuntimeCost> {
+    return this.guard(apiKey, async () => {
+      const report = await Agent.getUsage(agentId, { apiKey });
+      return costFromUsage(report);
     });
   }
 
@@ -222,6 +232,11 @@ class SdkSession implements RuntimeAgent {
     return run;
   }
 
+  async getUsage(): Promise<RuntimeCost> {
+    const report = await this.requireAgent().getUsage();
+    return costFromUsage(report);
+  }
+
   async dispose(): Promise<void> {
     const current = this.current;
     this.current = undefined;
@@ -271,7 +286,7 @@ class LocalRun implements RuntimeRun {
       yield* mapStream(this.active);
       result = await this.active.wait();
     }
-    this.settled = toRuntimeResult(result);
+    this.settled = toRuntimeResult(result, this.active.usage);
   }
 
   async wait(): Promise<RuntimeRunResult> {
@@ -417,18 +432,34 @@ function clip(text: string): string | undefined {
   return oneLine.length > 500 ? `${oneLine.slice(0, 500)}…` : oneLine;
 }
 
-function toRuntimeResult(result: RunResult): RuntimeRunResult {
+function toRuntimeResult(result: RunResult, live: TokenUsage | undefined): RuntimeRunResult {
+  const usage = tokenUsage(result.usage ?? live);
   if (result.status === "error") {
     return {
       status: "error",
       text: result.result ?? "",
       error: result.error?.message ?? "Run failed",
+      ...(usage ? { usage } : {}),
     };
   }
   if (result.status === "cancelled") {
-    return { status: "cancelled", text: result.result ?? "" };
+    return { status: "cancelled", text: result.result ?? "", ...(usage ? { usage } : {}) };
   }
-  return { status: "finished", text: result.result ?? "" };
+  return { status: "finished", text: result.result ?? "", ...(usage ? { usage } : {}) };
+}
+
+function tokenUsage(usage: TokenUsage | undefined): { totalTokens: number } | undefined {
+  if (!usage) {
+    return undefined;
+  }
+  return { totalTokens: usage.totalTokens };
+}
+
+function costFromUsage(report: AgentUsage): RuntimeCost {
+  if (report.cost === undefined) {
+    return {};
+  }
+  return { chargedCents: report.cost.chargedCents };
 }
 
 function isSystemPromptResult(result: RunResult): boolean {

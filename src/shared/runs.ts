@@ -1,6 +1,8 @@
 import { z } from "zod";
 import { workflowSchema, workspaceModeSchema } from "./workflow";
 
+export const budgetExceededMessage = "Budget exceeded.";
+
 export const nodeRunStatusSchema = z.enum([
   "idle",
   "queued",
@@ -44,6 +46,8 @@ export const runStartPayloadSchema = z.object({
   writePaths: z.array(z.string().min(1)).optional(),
   sandboxEnabled: z.boolean().optional(),
   autoReview: z.boolean().optional(),
+  workflowId: z.string().min(1).optional(),
+  budgetTokens: z.number().int().positive().optional(),
 });
 
 export const runCancelPayloadSchema = z.object({
@@ -86,8 +90,47 @@ export const workflowResumePayloadSchema = z.object({
   decision: approvalDecisionSchema.optional(),
 });
 
+export const runRecordStatusSchema = z.enum([
+  "running",
+  "completed",
+  "cancelled",
+  "failed",
+  "budget_exceeded",
+]);
+
+export const runCostStateSchema = z.enum(["pending", "known"]);
+
+export const runHistoryNodeSchema = z.object({
+  nodeId: z.string().min(1),
+  transcript: z.string(),
+  totalTokens: z.number().int().nonnegative().nullable(),
+  costState: runCostStateSchema,
+  chargedCents: z.number().nullable(),
+});
+
+export const runHistoryEntrySchema = z.object({
+  threadId: z.string().min(1),
+  status: runRecordStatusSchema,
+  startedAt: z.number().int().nonnegative(),
+  endedAt: z.number().int().nonnegative().nullable(),
+});
+
+export const runHistoryDetailSchema = runHistoryEntrySchema.extend({
+  nodes: z.array(runHistoryNodeSchema),
+});
+
+export const runHistoryListPayloadSchema = z.object({
+  workflowId: z.string().min(1),
+});
+
+export const runHistoryOpenPayloadSchema = z.object({
+  threadId: z.string().min(1),
+});
+
 export const workflowRunResultSchema = z.object({
   statuses: z.record(z.string(), nodeRunStatusSchema),
+  runStatus: runRecordStatusSchema.optional(),
+  budgetNote: z.string().min(1).optional(),
 });
 
 export const runStartChannel = "run:start";
@@ -95,6 +138,9 @@ export const runCancelChannel = "run:cancel";
 export const runSteerChannel = "run:steer";
 export const runUnfinishedChannel = "run:unfinished";
 export const runUpdateChannel = "run:update";
+export const runHistoryChannel = "run:history";
+export const runHistoryOpenChannel = "run:historyOpen";
+export const runHistoryRefreshChannel = "run:historyRefresh";
 export const workflowRunChannel = "workflow:run";
 export const workflowCancelChannel = "workflow:cancel";
 export const workflowResumeChannel = "workflow:resume";
@@ -109,3 +155,6 @@ export type RunStart = z.infer<typeof runStartPayloadSchema>;
 export type RunDone = RunUpdate;
 export type SteerDelivery = z.infer<typeof steerDeliverySchema>;
 export type WorkflowRunResult = z.infer<typeof workflowRunResultSchema>;
+export type RunRecordStatus = z.infer<typeof runRecordStatusSchema>;
+export type RunHistoryEntry = z.infer<typeof runHistoryEntrySchema>;
+export type RunHistoryDetail = z.infer<typeof runHistoryDetailSchema>;

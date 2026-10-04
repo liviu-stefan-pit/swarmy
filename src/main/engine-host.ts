@@ -36,6 +36,9 @@ const resultByRequest = {
   "run.cancel": "run.cancelResult",
   "run.steer": "run.steerResult",
   "run.unfinished": "run.unfinishedResult",
+  "run.history": "run.historyResult",
+  "run.historyOpen": "run.historyOpenResult",
+  "run.historyRefresh": "run.historyRefreshResult",
   "workflow.run": "workflow.runDone",
   "workflow.resume": "workflow.runDone",
   "workflow.cancel": "workflow.cancelResult",
@@ -234,6 +237,9 @@ function isEngineReply(message: EngineMessage): message is EngineSuccess | Engin
     message.type === "run.cancelResult" ||
     message.type === "run.steerResult" ||
     message.type === "run.unfinishedResult" ||
+    message.type === "run.historyResult" ||
+    message.type === "run.historyOpenResult" ||
+    message.type === "run.historyRefreshResult" ||
     message.type === "run.failed" ||
     message.type === "workflow.runDone" ||
     message.type === "workflow.cancelResult" ||
@@ -257,7 +263,11 @@ function timeoutFor(type: EngineRequestType): { timeoutMs: number; timeoutMessag
     case "workflow.cancel":
     case "run.steer":
       return { timeoutMs: CANCEL_TIMEOUT_MS, timeoutMessage: "Cancel timed out" };
+    case "run.historyRefresh":
+      return { timeoutMs: TEST_TIMEOUT_MS, timeoutMessage: "Cost refresh timed out" };
     case "run.unfinished":
+    case "run.history":
+    case "run.historyOpen":
     case "approval.list":
     case "approval.decide":
       return { timeoutMs: WORKFLOW_TIMEOUT_MS, timeoutMessage: "Workflow request timed out" };

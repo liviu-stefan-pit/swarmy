@@ -3,11 +3,12 @@ import { mkdtemp } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { parseEngineMessage, type EngineMessage } from "@shared/protocol";
+import { budgetExceededMessage } from "@shared/runs";
 import { startAgentRun, type AgentRunSession } from "./agent-run";
 import { createRuntime } from "./create-runtime";
 import { HELLO_PROMPT, HELLO_SYSTEM_PROMPT, type AgentRuntime } from "./runtime";
 import { listPendingApprovals, startWorkflowRun, type WorkflowRunHandle } from "./orchestrator";
-import { unfinishedThread } from "./run-catalog";
+import { openRunCatalog, unfinishedThread, type RunCatalog } from "./run-catalog";
 import { SqliteCheckpointer } from "./sqlite-checkpointer";
 import { openWorkflowDb, workflowDataDir, type WorkflowDb } from "./workflow-db";
 import { createWorkspaceManager, type AgentWorkspace, type WorkspaceManager } from "./workspace-manager";
@@ -126,6 +127,21 @@ export function attachEngine(
       return;
     }
 
+    if (message.type === "run.history") {
+      answerHistory(port, message, getCheckpointer);
+      return;
+    }
+
+    if (message.type === "run.historyOpen") {
+      answerHistoryOpen(port, message, getCheckpointer);
+      return;
+    }
+
+    if (message.type === "run.historyRefresh") {
+      void answerHistoryRefresh(port, getRuntime(), message, getCheckpointer);
+      return;
+    }
+
     if (message.type === "approval.list") {
       void answerApprovalList(port, message, getCheckpointer);
       return;
@@ -221,6 +237,7 @@ async function answerRun(
       ...(message.folderPath ? { folderPath: message.folderPath } : {}),
     });
     const workspacePath = workspace.path;
+    let agentId = "";
     const session = startAgentRun({
       runtime,
       request: {
@@ -235,6 +252,9 @@ async function answerRun(
         ...(message.writePaths !== undefined ? { writePaths: message.writePaths } : {}),
         ...(message.sandboxEnabled !== undefined ? { sandboxEnabled: message.sandboxEnabled } : {}),
         ...(message.autoReview !== undefined ? { autoReview: message.autoReview } : {}),
+      },
+      onAgent(id) {
+        agentId = id;
       },
       onUpdate(update) {
         port.postMessage({
@@ -252,6 +272,8 @@ async function answerRun(
       await session.cancel();
     }
     const outcome = await session.done;
+    const log = noteSingleRunBudget(message.budgetTokens, outcome.log, outcome.totalTokens);
+    persistSingleRun(message, log, outcome, agentId);
     await getWorkspaces().teardown(workspace);
     workspace = undefined;
     port.postMessage({
@@ -259,7 +281,7 @@ async function answerRun(
       id: message.id,
       nodeId: message.nodeId,
       status: outcome.status,
-      log: scrub(outcome.log, message.apiKey),
+      log: scrub(log, message.apiKey),
       workspacePath,
     });
   } catch (error) {
@@ -333,6 +355,8 @@ async function answerWorkflowRun(
       type: "workflow.runDone",
       id: message.id,
       statuses: result.statuses,
+      runStatus: result.runStatus,
+      ...(result.budgetNote ? { budgetNote: result.budgetNote } : {}),
     });
   } catch (error) {
     const text = scrub(error instanceof Error && error.message ? error.message : "The workflow run failed", message.apiKey);
@@ -411,6 +435,147 @@ function answerUnfinished(
   } catch (error) {
     const text = error instanceof Error && error.message ? error.message : "Could not look up the run";
     port.postMessage({ type: "run.failed", id: message.id, message: text });
+  }
+}
+
+function answerHistory(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.history" }>,
+  getCheckpointer: () => SqliteCheckpointer,
+): void {
+  const catalog = openCatalog(getCheckpointer);
+  if (!catalog) {
+    port.postMessage({ type: "run.historyResult", id: message.id, runs: [] });
+    return;
+  }
+  try {
+    port.postMessage({ type: "run.historyResult", id: message.id, runs: catalog.listRuns(message.workflowId) });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not list runs";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  } finally {
+    catalog.close();
+  }
+}
+
+function answerHistoryOpen(
+  port: EnginePort,
+  message: Extract<EngineMessage, { type: "run.historyOpen" }>,
+  getCheckpointer: () => SqliteCheckpointer,
+): void {
+  const catalog = openCatalog(getCheckpointer);
+  if (!catalog) {
+    port.postMessage({ type: "run.failed", id: message.id, message: "Could not open the run" });
+    return;
+  }
+  try {
+    port.postMessage({
+      type: "run.historyOpenResult",
+      id: message.id,
+      detail: catalog.runDetail(message.threadId),
+    });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not open the run";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  } finally {
+    catalog.close();
+  }
+}
+
+async function answerHistoryRefresh(
+  port: EnginePort,
+  runtimePromise: Promise<AgentRuntime>,
+  message: Extract<EngineMessage, { type: "run.historyRefresh" }>,
+  getCheckpointer: () => SqliteCheckpointer,
+): Promise<void> {
+  const catalog = openCatalog(getCheckpointer);
+  if (!catalog) {
+    port.postMessage({ type: "run.failed", id: message.id, message: "Could not refresh the cost" });
+    return;
+  }
+  try {
+    const runtime = await runtimePromise;
+    for (const agent of catalog.agents(message.threadId)) {
+      try {
+        const cost = await runtime.usageForAgent(message.apiKey, agent.agentId);
+        if (cost.chargedCents !== undefined) {
+          catalog.setChargedCents(message.threadId, agent.nodeId, cost.chargedCents);
+        }
+      } catch {
+        // A missing or failed report stays pending. Do not store zero.
+      }
+    }
+    port.postMessage({
+      type: "run.historyRefreshResult",
+      id: message.id,
+      detail: catalog.runDetail(message.threadId),
+    });
+  } catch (error) {
+    const text = error instanceof Error && error.message ? error.message : "Could not refresh the cost";
+    port.postMessage({ type: "run.failed", id: message.id, message: text });
+  } finally {
+    catalog.close();
+  }
+}
+
+function openCatalog(getCheckpointer: () => SqliteCheckpointer): RunCatalog | undefined {
+  try {
+    return openRunCatalog(getCheckpointer().databasePath);
+  } catch {
+    return undefined;
+  }
+}
+
+function noteSingleRunBudget(
+  budgetTokens: number | undefined,
+  log: string,
+  totalTokens: number | undefined,
+): string {
+  if (budgetTokens === undefined || totalTokens === undefined) {
+    return log;
+  }
+  if (totalTokens <= budgetTokens || log.includes(budgetExceededMessage)) {
+    return log;
+  }
+  return log.length > 0 ? `${log}\n${budgetExceededMessage}` : budgetExceededMessage;
+}
+
+function persistSingleRun(
+  message: Extract<EngineMessage, { type: "run.start" }>,
+  log: string,
+  outcome: { status: "completed" | "failed" | "cancelled"; totalTokens?: number; chargedCents?: number },
+  agentId: string,
+): void {
+  if (!message.workflowId || (process.env.VITEST === "true" && !process.env.SWARMY_DATA_DIR?.trim())) {
+    return;
+  }
+  let catalog: RunCatalog | undefined;
+  try {
+    catalog = openRunCatalog(join(workflowDataDir(), "swarmy.db"));
+    const threadId = randomUUID();
+    catalog.markRunning(threadId, message.workflowId);
+    if (agentId.length > 0) {
+      catalog.rememberAgent(threadId, message.nodeId, agentId);
+    }
+    catalog.recordNode({
+      threadId,
+      nodeId: message.nodeId,
+      transcript: log,
+      totalTokens: outcome.totalTokens,
+      chargedCents: outcome.chargedCents,
+    });
+    const overBudget =
+      message.budgetTokens !== undefined &&
+      outcome.totalTokens !== undefined &&
+      outcome.totalTokens > message.budgetTokens;
+    catalog.markFinished(
+      threadId,
+      overBudget ? "budget_exceeded" : outcome.status === "completed" ? "completed" : outcome.status,
+    );
+  } catch {
+    // History is best-effort for a card run. The live log is already on its way.
+  } finally {
+    catalog?.close();
   }
 }
 

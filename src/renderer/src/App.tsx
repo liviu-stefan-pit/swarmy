@@ -3,6 +3,7 @@ import { appInfo } from "@shared/app-info";
 import type { EngineStatus } from "@shared/protocol";
 import type { ConnectionInfo, HelloInfo } from "@shared/settings";
 import { ApprovalInbox } from "./ApprovalInbox";
+import { RunHistory } from "./RunHistory";
 import { RunLog } from "./RunLog";
 import { SettingsForm } from "./SettingsForm";
 import { WorkflowEditor } from "./WorkflowCanvas";
@@ -85,6 +86,7 @@ export function App() {
       </header>
       <WorkflowEditor />
       <ApprovalInbox />
+      <RunHistory />
       <RunLog />
       <details className="border-t border-zinc-800 px-4 py-2">
         <summary className="cursor-pointer text-sm text-zinc-300">Cursor connection</summary>

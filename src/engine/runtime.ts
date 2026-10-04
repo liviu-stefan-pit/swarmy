@@ -26,10 +26,20 @@ export type RuntimeEvent =
 
 export type RuntimeRunStatus = "finished" | "error" | "cancelled";
 
+export interface RuntimeTokenUsage {
+  totalTokens: number;
+}
+
+/** Dollar cost from `agent.getUsage()`. Omit `chargedCents` when the SDK has not reported a cost. */
+export interface RuntimeCost {
+  chargedCents?: number;
+}
+
 export interface RuntimeRunResult {
   status: RuntimeRunStatus;
   text: string;
   error?: string;
+  usage?: RuntimeTokenUsage;
 }
 
 export type SteerAck = "complete_delivered" | "revert_to_followup";
@@ -52,6 +62,7 @@ export interface RuntimeRun {
 export interface RuntimeAgent {
   readonly agentId: string;
   send(prompt: string): Promise<RuntimeRun>;
+  getUsage(): Promise<RuntimeCost>;
   dispose(): Promise<void>;
 }
 
@@ -94,6 +105,7 @@ export interface AgentRuntime {
   hello(request: HelloRequest): Promise<HelloResult>;
   create(request: CreateAgentRequest): Promise<RuntimeAgent>;
   resume(request: ResumeAgentRequest): Promise<RuntimeAgent>;
+  usageForAgent(apiKey: string, agentId: string): Promise<RuntimeCost>;
 }
 
 export const HELLO_PROMPT =

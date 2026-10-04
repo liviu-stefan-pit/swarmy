@@ -8,6 +8,13 @@ import {
   pendingApprovalSchema,
   runCancelChannel,
   runCancelPayloadSchema,
+  runHistoryChannel,
+  runHistoryDetailSchema,
+  runHistoryEntrySchema,
+  runHistoryListPayloadSchema,
+  runHistoryOpenChannel,
+  runHistoryOpenPayloadSchema,
+  runHistoryRefreshChannel,
   runStartChannel,
   runStartPayloadSchema,
   runSteerChannel,
@@ -139,6 +146,18 @@ const swarmy: SwarmyApi = {
     async steer(nodeId, text) {
       const parsed = runSteerPayloadSchema.parse({ nodeId, text });
       return steerDeliverySchema.parse(await ipcRenderer.invoke(runSteerChannel, parsed));
+    },
+    async history(workflowId) {
+      const parsed = runHistoryListPayloadSchema.parse({ workflowId });
+      return runHistoryEntrySchema.array().parse(await ipcRenderer.invoke(runHistoryChannel, parsed));
+    },
+    async openHistory(threadId) {
+      const parsed = runHistoryOpenPayloadSchema.parse({ threadId });
+      return runHistoryDetailSchema.parse(await ipcRenderer.invoke(runHistoryOpenChannel, parsed));
+    },
+    async refreshHistory(threadId) {
+      const parsed = runHistoryOpenPayloadSchema.parse({ threadId });
+      return runHistoryDetailSchema.parse(await ipcRenderer.invoke(runHistoryRefreshChannel, parsed));
     },
     async unfinished(workflowId) {
       const parsed = runUnfinishedPayloadSchema.parse({ workflowId });

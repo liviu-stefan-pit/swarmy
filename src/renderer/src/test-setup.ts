@@ -92,6 +92,27 @@ const swarmy: SwarmyApi = {
     unfinished() {
       return Promise.resolve(null);
     },
+    history() {
+      return Promise.resolve([]);
+    },
+    openHistory() {
+      return Promise.resolve({
+        threadId: "thread-1",
+        status: "completed",
+        startedAt: 0,
+        endedAt: 0,
+        nodes: [],
+      });
+    },
+    refreshHistory() {
+      return Promise.resolve({
+        threadId: "thread-1",
+        status: "completed",
+        startedAt: 0,
+        endedAt: 0,
+        nodes: [],
+      });
+    },
     resume() {
       return Promise.resolve({ statuses: {} });
     },

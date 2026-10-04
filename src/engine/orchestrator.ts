@@ -13,6 +13,7 @@ import {
 import { z } from "zod";
 import {
   approvalDecisionSchema,
+  budgetExceededMessage,
   pendingApprovalSchema,
   type ApprovalDecision,
   type PendingApproval,
@@ -90,6 +91,8 @@ export interface WorkflowRunUpdate {
 
 export interface WorkflowRunResult {
   statuses: Record<string, WorkflowRunUpdate["status"]>;
+  runStatus: "running" | "completed" | "cancelled" | "failed" | "budget_exceeded";
+  budgetNote?: string;
 }
 
 const handoffInstruction =
@@ -133,6 +136,9 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
   const cancelledNodes = new Set<string>();
   const waiting: PendingApproval[] = [];
   let runCancelled = false;
+  let budgetExceeded = false;
+  let budgetNote = "";
+  let knownTokens = 0;
   let decisionWaiter: ((decision: ApprovalDecision | undefined) => void) | undefined;
 
   const done = executeGraph();
@@ -206,11 +212,30 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
       workspaces: input.workspaces,
       threadId,
       ...(catalog ? { catalog } : {}),
+      ...(workflow.budgetTokens !== undefined ? { budgetTokens: workflow.budgetTokens } : {}),
       ...(input.onUpdate ? { onUpdate: input.onUpdate } : {}),
       sessions,
       retained,
       isCancelled: () => runCancelled,
       isNodeCancelled: (nodeId) => cancelledNodes.has(nodeId),
+      isBudgetExceeded: () => budgetExceeded,
+      budgetNote: () => budgetNote,
+      noteBudgetStop(message) {
+        budgetNote = message;
+      },
+      async markBudgetExceeded() {
+        budgetExceeded = true;
+        await cancelSessions([...sessions.values()]);
+      },
+      noteTokens(tokens) {
+        if (catalog || tokens === undefined) {
+          return;
+        }
+        knownTokens += tokens;
+      },
+      spentTokens() {
+        return catalog ? catalog.knownTotalTokens(threadId) : knownTokens;
+      },
     };
 
     try {
@@ -296,16 +321,22 @@ export function startWorkflowRun(input: WorkflowRunInput): WorkflowRunHandle {
           statuses[node.id] = snapshot.status;
         } else if (unfinished) {
           statuses[node.id] = prior[node.id]?.status ?? "queued";
-        } else if (runCancelled || parentStatus(node.id, snapshots, incoming) === "cancelled") {
+        } else if (
+          runCancelled ||
+          budgetExceeded ||
+          parentStatus(node.id, snapshots, incoming) === "cancelled"
+        ) {
           statuses[node.id] = "cancelled";
         } else {
           statuses[node.id] = "failed";
         }
       }
-      if (!unfinished) {
-        catalog?.markFinished(threadId, overallStatus(statuses, runCancelled));
+      if (unfinished) {
+        return { statuses, runStatus: "running" };
       }
-      return { statuses };
+      const runStatus = overallStatus(statuses, runCancelled, budgetExceeded);
+      catalog?.markFinished(threadId, runStatus);
+      return { statuses, runStatus, ...(budgetNote ? { budgetNote } : {}) };
     } catch (error) {
       catalog?.markFinished(threadId, "failed");
       throw error;
@@ -352,11 +383,18 @@ interface RunContext {
   workspaces: WorkspaceManager;
   threadId: string;
   catalog?: RunCatalog;
+  budgetTokens?: number;
   onUpdate?: (update: WorkflowRunUpdate) => void;
   sessions: Map<string, AgentRunSession>;
   retained: Map<string, AgentWorkspace>;
   isCancelled: () => boolean;
   isNodeCancelled: (nodeId: string) => boolean;
+  isBudgetExceeded: () => boolean;
+  budgetNote: () => string;
+  noteBudgetStop: (message: string) => void;
+  markBudgetExceeded: () => Promise<void>;
+  noteTokens: (tokens: number | undefined) => void;
+  spentTokens: () => number;
 }
 
 type NodeUpdate = Partial<GraphValues>;
@@ -370,6 +408,9 @@ async function executeNode(
 ): Promise<NodeUpdate> {
   if (input.isCancelled() || input.isNodeCancelled(node.id)) {
     return cancelledSnapshot(input, node.id);
+  }
+  if (input.isBudgetExceeded()) {
+    return budgetSnapshot(input, node.id);
   }
 
   const upstream = parents.map((id) => state.snapshots?.[id]);
@@ -578,6 +619,16 @@ async function executeAgent(
       await session.cancel();
     }
     const outcome = await session.done;
+    rememberNode(input, node.id, outcome.log, outcome.totalTokens, outcome.chargedCents);
+    input.noteTokens(outcome.totalTokens);
+    const stop = budgetStopFor(input, outcome.status, outcome.totalTokens);
+    if (stop) {
+      const transcript = joinLog(outcome.log, stop);
+      rememberNode(input, node.id, transcript, outcome.totalTokens, outcome.chargedCents);
+      input.noteBudgetStop(stop);
+      report(outcome.status, transcript, workspacePath);
+      await input.markBudgetExceeded();
+    }
 
     const handoff: Handoff = captured ?? {
       kind: "unstructured",
@@ -796,6 +847,49 @@ function workspaceId(threadId: string, nodeId: string): string {
   return safe.length > 0 ? safe : "agent";
 }
 
+function rememberNode(
+  input: RunContext,
+  nodeId: string,
+  transcript: string,
+  totalTokens: number | undefined,
+  chargedCents: number | undefined,
+): void {
+  input.catalog?.recordNode({
+    threadId: input.threadId,
+    nodeId,
+    transcript,
+    totalTokens,
+    chargedCents,
+  });
+}
+
+function budgetStopFor(
+  input: RunContext,
+  status: WorkflowRunUpdate["status"],
+  totalTokens: number | undefined,
+): string | undefined {
+  if (input.budgetTokens === undefined || input.isCancelled() || status === "cancelled" || totalTokens === undefined) {
+    return undefined;
+  }
+  if (input.spentTokens() > input.budgetTokens) {
+    return budgetExceededMessage;
+  }
+  return undefined;
+}
+
+function budgetSnapshot(input: RunContext, nodeId: string): NodeUpdate {
+  const summary = input.budgetNote() || budgetExceededMessage;
+  const handoff: Handoff = {
+    kind: "unstructured",
+    summary,
+    files: [],
+    blockers: [],
+  };
+  input.onUpdate?.({ nodeId, status: "cancelled", log: summary });
+  rememberNode(input, nodeId, summary, undefined, undefined);
+  return { snapshots: { [nodeId]: { status: "cancelled", handoff } }, routes: { [nodeId]: "fail" } };
+}
+
 function cancelledSnapshot(input: RunContext, nodeId: string): NodeUpdate {
   const handoff: Handoff = {
     kind: "unstructured",
@@ -825,7 +919,11 @@ function wasInterrupted(state: object): boolean {
 function overallStatus(
   statuses: WorkflowRunResult["statuses"],
   cancelled: boolean,
-): "completed" | "cancelled" | "failed" {
+  budgetExceeded: boolean,
+): "completed" | "cancelled" | "failed" | "budget_exceeded" {
+  if (budgetExceeded) {
+    return "budget_exceeded";
+  }
   if (cancelled || Object.values(statuses).some((status) => status === "cancelled")) {
     return "cancelled";
   }
@@ -999,6 +1097,9 @@ function idleContext(threadId: string): RunContext {
       resume() {
         return Promise.reject(new Error("Listing approvals does not run agents"));
       },
+      usageForAgent() {
+        return Promise.reject(new Error("Listing approvals does not run agents"));
+      },
     },
     apiKey: "",
     workspaces: {
@@ -1020,5 +1121,11 @@ function idleContext(threadId: string): RunContext {
     retained: new Map(),
     isCancelled: () => false,
     isNodeCancelled: () => false,
+    isBudgetExceeded: () => false,
+    budgetNote: () => "",
+    noteBudgetStop: () => undefined,
+    markBudgetExceeded: () => Promise.resolve(),
+    noteTokens: () => undefined,
+    spentTokens: () => 0,
   };
 }

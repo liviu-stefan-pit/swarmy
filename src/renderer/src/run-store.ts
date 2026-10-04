@@ -1,5 +1,5 @@
 import { create } from "zustand";
-import type { ApprovalDecision, NodeRunStatus, PendingApproval, RunUpdate } from "@shared/runs";
+import { budgetExceededMessage, type ApprovalDecision, type NodeRunStatus, type PendingApproval, type RunUpdate, type WorkflowRunResult } from "@shared/runs";
 import { useWorkflowStore } from "./workflow-store";
 
 type RunState = {
@@ -11,6 +11,8 @@ type RunState = {
   workflowRunning: boolean;
   unfinishedThreadId: string | null;
   approvals: PendingApproval[];
+  budgetMessage: string;
+  historyRevision: number;
   start: (nodeId: string) => Promise<void>;
   startWorkflow: () => Promise<void>;
   resume: () => Promise<void>;
@@ -30,6 +32,8 @@ export const useRunStore = create<RunState>((set, get) => ({
   workflowRunning: false,
   unfinishedThreadId: null,
   approvals: [],
+  budgetMessage: "",
+  historyRevision: 0,
   async start(nodeId) {
     if (get().activeNodeId || get().workflowRunning) {
       return;
@@ -44,6 +48,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       activeNodeId: nodeId,
       log: "",
       workspacePath: null,
+      budgetMessage: "",
       statusByNode: { ...get().statusByNode, [nodeId]: "running" },
     });
 
@@ -66,6 +71,8 @@ export const useRunStore = create<RunState>((set, get) => ({
         ...(node.data.workspaceMode ? { workspaceMode: node.data.workspaceMode } : {}),
         ...(workflow.repositoryPath ? { repositoryPath: workflow.repositoryPath } : {}),
         ...(node.data.folderPath ? { folderPath: node.data.folderPath } : {}),
+        workflowId: workflow.id,
+        ...(workflow.budgetTokens !== undefined ? { budgetTokens: workflow.budgetTokens } : {}),
       });
       applyUpdate(set, get, done);
     } catch (error) {
@@ -76,9 +83,10 @@ export const useRunStore = create<RunState>((set, get) => ({
       });
     } finally {
       stop();
-      if (get().activeNodeId === nodeId) {
-        set({ activeNodeId: null });
-      }
+      set({
+        historyRevision: get().historyRevision + 1,
+        ...(get().activeNodeId === nodeId ? { activeNodeId: null } : {}),
+      });
     }
   },
   async startWorkflow() {
@@ -92,6 +100,7 @@ export const useRunStore = create<RunState>((set, get) => ({
       workspacePath: null,
       logsByNode: {},
       approvals: [],
+      budgetMessage: "",
       statusByNode: Object.fromEntries(workflow.nodes.map((node) => [node.id, "queued" as const])),
     });
 
@@ -105,12 +114,15 @@ export const useRunStore = create<RunState>((set, get) => ({
       for (const [nodeId, status] of Object.entries(result.statuses)) {
         statusByNode[nodeId] = status;
       }
-      set({ statusByNode });
+      set({
+        statusByNode,
+        ...budgetBanner(result),
+      });
     } catch (error) {
       set({ log: errorText(error) });
     } finally {
       stop();
-      set({ workflowRunning: false });
+      set({ workflowRunning: false, historyRevision: get().historyRevision + 1 });
       await get().refreshUnfinished(useWorkflowStore.getState().workflow.id);
     }
   },
@@ -135,12 +147,15 @@ export const useRunStore = create<RunState>((set, get) => ({
       for (const [nodeId, status] of Object.entries(result.statuses)) {
         statusByNode[nodeId] = status;
       }
-      set({ statusByNode });
+      set({
+        statusByNode,
+        ...budgetBanner(result),
+      });
     } catch (error) {
       set({ log: errorText(error) });
     } finally {
       stop();
-      set({ workflowRunning: false });
+      set({ workflowRunning: false, historyRevision: get().historyRevision + 1 });
       await get().refreshUnfinished(workflow.id);
     }
   },
@@ -216,12 +231,16 @@ export const useRunStore = create<RunState>((set, get) => ({
       for (const [nodeId, status] of Object.entries(result.statuses)) {
         statusByNode[nodeId] = status;
       }
-      set({ statusByNode, approvals: [] });
+      set({
+        statusByNode,
+        approvals: [],
+        ...budgetBanner(result),
+      });
     } catch (error) {
       set({ log: errorText(error) });
     } finally {
       stop();
-      set({ workflowRunning: false });
+      set({ workflowRunning: false, historyRevision: get().historyRevision + 1 });
       await get().refreshUnfinished(workflow.id);
     }
   },
@@ -268,6 +287,13 @@ export const useRunStore = create<RunState>((set, get) => ({
     }
   },
 }));
+
+function budgetBanner(result: WorkflowRunResult): { budgetMessage: string } | Record<string, never> {
+  if (result.runStatus !== "budget_exceeded") {
+    return {};
+  }
+  return { budgetMessage: result.budgetNote ?? budgetExceededMessage };
+}
 
 function applyUpdate(
   set: (partial: Partial<RunState>) => void,

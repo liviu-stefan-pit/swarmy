@@ -2,6 +2,8 @@
 
 An edge is valid only when the output and the input carry the same data type. The canvas colors match these types. This is decision D12. Later phases must keep this vocabulary.
 
+Phase 15 does not change this table. A workflow budget and run history are not handles.
+
 | Type | Color on the canvas | Meaning |
 | --- | --- | --- |
 | `text` | blue | A string: a brief, a reply, a plan |
